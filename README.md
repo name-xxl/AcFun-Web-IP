@@ -295,7 +295,7 @@ adb logcat -c; adb logcat | findstr "access_token comment/list"
 
 ## 致谢
 
-本分析基于 A 站 Android App 版本 7.5.0（`tv.acfundanmaku.video`），使用 jadx 进行反编译。
+本分析基于 A 站 Android App 版本 6.80（`tv.acfundanmaku.video`），使用 jadx 进行反编译。
 
 ---
 
