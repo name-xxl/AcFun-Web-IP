@@ -1,302 +1,170 @@
-# AcFun-Web-IP
+# AcFunReveal - A站网页版显示 IP 属地
 
-## 概述
+> 通过 A 站用户资料 API 获取评论者 IP 属地，注入到网页版评论区。
 
-本文档记录了对 A 站（AcFun）评论系统 IP 属地功能的完整逆向分析过程。目标是在 A 站网页版评论区显示 IP 属地（类似 B 站的 BiliReveal 脚本），最终因架构隔离问题未能实现，但获得了完整的技术细节，供后续开发者参考。
+## 功能
 
-## 结论
+- ✅ 评论区显示 IP 属地（设备型号/网页端后面）
+- ✅ 楼中楼/折叠评论支持
+- ✅ 个人主页 UP IP 显示
+- ✅ 用户主页 IP 显示
+- ✅ 可视区域优先查询（IntersectionObserver）
+- ✅ 按页面缓存（文章/视频按 ac 号）
+- ✅ 翻页/懒加载自动处理
+- ✅ SPA 导航自动刷新
+- ✅ 缓存导入/导出
 
-**A 站网页版无法通过前端脚本实现 IP 属地显示。** 根本原因是网页版和 App 使用两套完全独立的后端系统，认证不互通。
+## 安装
 
-| 系统 | API 端点 | 是否返回 `ipLocation` | 认证方式 |
-|---|---|---|---|
-| 网页版 | `rest/pc-direct/comment/list` | ❌ 不返回 | Cookie |
-| App | `rest/app/comment/list` | ✅ 返回 | access_token |
+1. 安装 [Tampermonkey](https://www.tampermonkey.net/)
+2. 新建脚本，粘贴 `AcFunReveal.user.js` 内容
+3. 保存，打开 A 站页面即可
 
----
+## 版本历史
 
-## 技术发现
+### v5.1.0 — 可视区域优先
 
-### 1. 网页版评论 API
+使用 `IntersectionObserver` 实现懒加载，只查询可见评论的 IP：
 
 ```
-POST https://www.acfun.cn/rest/pc-direct/comment/list
-参数: sourceId, sourceType, pivotCommentId, newPivotCommentId, t, supportZtEmot
+页面加载 → 拦截评论 API → 建立 commentId→userId 映射
+  ↓
+评论进入视口 → 查询该用户 IP → 注入
+  ↓
+滚动 → 新评论进入视口 → 查询 → 注入
+  ↓
+已缓存 → 直接注入，不发请求
 ```
 
-返回的评论字段（38 个）：
+| 场景 | API 调用 | 注入时机 |
+|---|---|---|
+| 打开页面（25条评论，可见5条） | 5 次 | 立即 |
+| 滚动看到更多 | 逐个查询 | 进入视口时 |
+| 再次访问（有缓存） | 0 次 | 立即 |
+
+### v5.0.0 — 性能优化重构
+
+| 优化项 | 说明 |
+|---|---|
+| `WeakSet` 去重 | 已注入的评论元素跳过重复处理 |
+| `Promise` 去重 | 同一用户的 IP 查询不会重复发起 |
+| 统一 Observer | 一个 MutationObserver 管理所有 DOM 变化 |
+| 300ms 防抖 | 避免频繁 DOM 变化触发重复扫描 |
+| 代码精简 | 350 行 → 260 行 |
+
+### v3.2.0 — 缓存机制
+
+引入完整的缓存系统：
 
 ```json
 {
-  "commentId": 807009960,
-  "userName": "寒鸦号",
-  "content": "理中客来咯！！！",
-  "postDate": "20分钟前",
-  "deviceModel": "网页端",
-  "isSameCity": false,        // ← 唯一与位置相关的字段（仅布尔值）
-  "floor": 16,
-  "likeCountFormat": "0",
-  "subCommentCount": 0,
-  "timestamp": 1787974236243
-  // ... 无 ipLocation 字段
+  "ac48809309": {
+    "users": {
+      "13274260": { "ip": "四川", "name": "美食作家王刚" },
+      "51737407": { "ip": "江西", "name": "name_xxl" }
+    },
+    "time": 1693312000000,
+    "url": "https://www.acfun.cn/a/ac48809309"
+  }
 }
 ```
 
-**关键发现：** `isSameCity` 字段说明后端知道用户所在城市，但未在接口中暴露具体位置。
+- **开启缓存**：按 ac 号存储，再次访问直接读取
+- **关闭缓存**：每次重新查询，离开页面清除
+- **自定义天数**：0=永久，或设置 1/7/30 天自动过期
+- **导入/导出**：支持 JSON 格式
 
-### 2. App 评论 API（反编译结果）
+### v3.0.0 — 按需查询
 
-通过 jadx 反编译 A 站 APK（`tv.acfundanmaku.video`），发现以下关键信息：
+去掉轮询定时器，改用 MutationObserver：
 
-#### API 接口定义
-
-文件：`tv.acfun.core.refactor.http.service.AcFunApiService`
-
-```java
-// 评论列表（有 token 版本）
-@GET("/rest/app/comment/list")
-Observable<CommentParent> L(
-    @Query("sourceId") String,
-    @Query("sourceType") int,
-    @Query("pcursor") String,
-    @Query("count") int,
-    @Query("showHotComments") int,
-    @Query("access_token") String
-);
-
-// 评论列表（无 token 版本）
-@GET("/rest/app/comment/list")
-Observable<CommentParent> I3(
-    @Query("sourceId") String,
-    @Query("sourceType") int,
-    @Query("pcursor") String,
-    @Query("count") int,
-    @Query("showHotComments") int
-);
-
-// 子评论列表
-@GET("/rest/app/comment/sublist")
-Observable<CommentChild> O3(
-    @Query("sourceId") String,
-    @Query("sourceType") int,
-    @Query("pcursor") String,
-    @Query("count") int,
-    @Query("rootCommentId") String,
-    @Query("isIssueTimeUbb") boolean
-);
-```
-
-#### 评论数据模型
-
-文件：`tv.acfun.core.model.bean.CommentFloorContent`、`CommentRoot`、`CommentSub`
-
-```java
-// 评论模型中包含 ipLocation 字段
-public class CommentSub {
-    // ... 其他字段
-    public String ipLocation;  // ← IP 属地！网页版没有这个字段
-    public boolean isSameCity;
-    // ...
-}
-```
-
-#### UI 显示代码
-
-```java
-// 评论组件中显示 IP 属地的代码
-textView4.setText(StringUtils.a(
-    CommentUtils.c.b(commentSubC.timestamp),
-    commentSubC.ipLocation  // ← 将 ipLocation 拼接到时间后面显示
-));
-```
-
-### 3. API 域名配置
-
-文件：`tv.acfun.core.common.domain.HostProvider`
-
-| 方法 | 域名 | 用途 |
+| 场景 | 之前 | 现在 |
 |---|---|---|
-| `getAcFunApiHost()` | `https://api-new.app.acfun.cn` | App 主 API |
-| `getLegacyApiHost()` | `https://apipc.app.acfun.cn` | 旧版 API |
-| `getPCApiHost()` | `https://mobile.app.acfun.cn` | PC 端 API |
-| `getIdHost()` | `https://id.app.acfun.cn` | 登录认证 |
+| 打开页面 | 持续轮询 | 查询一次，等待 |
+| 翻页 | 轮询发现 | Observer 立即触发 |
+| 无操作 | 每 1.5 秒检查 | 不做任何事 |
+| 已查用户 | 每次检查缓存 | WeakSet 直接跳过 |
 
-**实际网络请求中发现 App 使用 `https://api-ipv6.app.acfun.cn`（IPv6 版本）。**
+## 技术原理
 
-### 4. Token 机制
+### 核心发现
 
-#### Token 获取
+A 站网页版评论 API (`/rest/pc-direct/comment/list`) 返回的评论数据**没有 IP 属地字段**。但用户资料 API (`/rest/pc-direct/user/userInfo?userId=xxx`) 返回的 `profile.ipLocation` **包含 IP 属地**。
 
-文件：`tv.acfun.core.refactor.http.service.IdService`
-
-```java
-public interface IdService {
-    @POST("/rest/app/token/get")
-    Observable<KwaiToken> a(@Field("sid") String str);
-
-    @POST("/rest/app/visitor/login")
-    Observable<KwaiVisitorToken> b(@Field("sid") String str);
-}
-```
-
-#### Token 管理
-
-文件：`tv.acfun.core.utils.MidgroundTokenManager`
-
-```java
-public class MidgroundTokenManager {
-    public static final String f44129d = "acfun.midground.api"; // sid 值
-
-    // Token 存储在 SharedPreferences 中
-    private void h(KwaiToken kwaiToken) {
-        AcFunPreferenceUtils.t.q().n0(kwaiToken.apiSt);      // API token
-        AcFunPreferenceUtils.t.q().z0(kwaiToken.ssecurity);   // 安全密钥
-        AcFunPreferenceUtils.t.q().A0(kwaiToken.userId);      // 用户 ID
-    }
-}
-```
-
-#### KwaiToken 结构
-
-```java
-public class KwaiToken {
-    public String apiSt;       // API token（用于 access_token 参数）
-    public String ssecurity;   // 安全密钥（用于请求签名）
-    public long userId;        // 用户 ID
-}
-```
-
-#### Token 使用
-
-文件：`tv.acfun.core.refactor.http.AcFunParams`
-
-```java
-public static Map<String, String> getHeaders() {
-    map.put("access_token", SigninHelper.g().h()); // 从 SigninHelper 获取 token
-    // ...
-}
-```
-
-### 5. 请求签名机制
-
-A 站 App 的 API 请求可能需要签名验证（基于 `ssecurity`），不仅仅是简单的 token 传递。这增加了从外部调用 App API 的难度。
-
----
-
-## 尝试过的方案
-
-### 方案 1：直接调用 App API（不带 token）
+### 工作流程
 
 ```
-GET https://api-new.app.acfun.cn/rest/app/comment/list?sourceId=xxx&sourceType=3
+1. 拦截评论 API 响应 → 提取 commentId → userId 映射
+2. IntersectionObserver 监听评论元素进入视口
+3. 可见评论 → 查询用户资料 API → 获取 profile.ipLocation
+4. 将 IP 属地注入到评论区 .area-comment-from 容器末尾
 ```
 
-**结果：** 错误码 105001（需要认证）
+### 为什么不用移动端 API
 
-### 方案 2：用网页 Cookie 调用 App API
+移动端 API (`/rest/app/comment/list`) 的评论数据直接包含 `ipLocation`，但：
 
-```
-GET https://api-new.app.acfun.cn/rest/app/comment/list?...&access_token=acPostHint值
-```
+- 需要 App 的 `access_token`（通过快手安全 SDK Azeroth 签名）
+- 签名算法在混淆的 native 代码中，无法从网页端复制
+- 网页端和 App 端的认证系统完全独立
 
-**结果：** 错误码 105001（Cookie 和 App token 不互通）
+### 支持的页面
 
-### 方案 3：获取访客 Token
+| 页面 | 功能 | 缓存 |
+|---|---|---|
+| 文章 `/a/ac*` | 评论区 IP | ✅ 按 ac 号缓存 |
+| 视频 `/v/ac*` | 评论区 IP | ✅ 按 ac 号缓存 |
+| 个人主页 `/member` | UP IP | ❌ 实时查询 |
+| 用户主页 `/u/xxx` | 用户 IP | ❌ 实时查询 |
 
-```
-POST https://id.app.acfun.cn/rest/app/visitor/login
-Body: sid=acfun.midground.api
-```
+## 菜单
 
-**结果：** 返回 401（`token value error`），该接口需要已有 token 才能使用
-
-### 方案 4：抓取移动端页面
-
-```
-GET https://m.acfun.cn/v/?ac=xxx
-```
-
-**结果：** 页面是 SPA 架构，HTML 中只有配置标志，评论数据通过 JavaScript 动态加载，无法从 HTML 中提取
-
-### 方案 5：用 `isSameCity` 穷举
-
-通过换不同城市的 IP 探测评论者位置。
-
-**结果：** 理论可行但实际不可行——需要全国各城市的代理 IP，且每条评论都要测试
-
-### 方案 6：从 App 提取 Token
-
-| 方法 | 结果 |
+| 菜单 | 功能 |
 |---|---|
-| `adb run-as` | App 不可调试（正式版） |
-| `adb backup` | 备份失败（47 字节空文件） |
-| `adb logcat` | 只显示网络监控统计，不显示完整请求 URL |
-| 抓包工具 | HTTPS 证书固定，无法拦截 |
+| 🟢/🔴 缓存开关 | 开启/关闭缓存 |
+| ⏰ 设置缓存天数 | 0=永久, 1/7/30 天 |
+| 📋 复制全部日志 | 复制调试日志到剪贴板 |
+| 📊 查看本页缓存 | 查看当前页面的 IP 缓存 |
+| 📦 导出全部缓存 | 导出所有页面的缓存 JSON |
+| 📥 导入缓存 | 导入之前导出的缓存 |
+| 🗑️ 清空缓存 | 清除所有缓存数据 |
 
----
+## 性能
 
-## 为什么 BiliReveal 能成功但 AcFun 不行
+| 指标 | 数值 |
+|---|---|
+| 内存占用 | ~60-100KB |
+| 首屏 API 调用 | 仅可见评论数（约5个） |
+| 缓存命中时 | 0 次 API 调用 |
+| CPU 开销 | 极低（IntersectionObserver 硬件加速） |
 
-| 对比项 | B 站（BiliReveal） | A 站 |
+## 局限性
+
+- **IP 属地来源**：基于用户主页实时资料，不代表发布评论时的 IP
+- **覆盖率**：依赖用户资料 API 返回 `ipLocation`，部分用户可能没有
+- **实时性**：用户换城市后，显示的是当前城市（非评论时城市）
+
+## 开发过程
+
+### 关键逆向发现
+
+1. **App 反编译**（jadx）：发现 `ipLocation` 字段存在于 `CommentFloorContent`、`CommentRoot`、`CommentSub` 等类中
+2. **API 分析**：网页 API 不返回 `ipLocation`，移动端 API 需要签名认证
+3. **嗅探器**：通过自定义 API 嗅探脚本发现网页端 `/rest/pc-direct/user/userInfo` 返回 `profile.ipLocation`
+4. **DOM 分析**：通过保存页面 HTML 分析评论区的真实 DOM 结构
+
+### 踩过的坑
+
+| 问题 | 原因 | 解决 |
 |---|---|---|
-| 网页 API 返回 IP 属地 | ✅ `reply_control.location` | ❌ 没有 |
-| 手机端显示 IP | ✅ 是 | ✅ 是 |
-| 网页端显示 IP | ❌ 不显示 | ❌ 不显示 |
-| 脚本原理 | 挖出 API 已返回但未渲染的数据 | 需要调用完全不同的 API |
-| 认证隔离 | 网页和 App 共享数据 | 网页和 App 完全隔离 |
+| 注入不生效 | `[data-cid]` 选择器不对 | 改用 `[data-commentid]` |
+| UP IP 不显示 | `log-item` 的 JSON 被 HTML 编码 | 改用链接提取 userId |
+| 个人主页不触发 | `/member` vs `/member/` 路径不匹配 | 去掉尾部斜杠 |
+| 控制台无日志 | `log()` 不写入 `allLogs` 数组 | 统一用 `addLog()` |
+| IP 换行显示 | `.up-time` 是 block 元素 | 用 `appendChild` 而非 `insertBefore` |
+| 注入分批出现 | 每批查询完都注入 | 改用 IntersectionObserver |
+| 移动端 API 105001 | 缺少请求签名（Azeroth SDK） | 改用用户资料 API |
 
-B 站的网页 API 已经返回了 IP 属地数据，只是前端不渲染。BiliReveal 只是把这些数据"挖出来"显示。
+## 许可
 
-A 站的网页 API 根本不返回 IP 属地数据。要获取这些数据必须调用 App API，而 App API 需要独立的认证 token，网页端无法获取。
-
----
-
-## 可能的解决方案
-
-### 方案 A：后端代理（最可行）
-
-```
-用户浏览器 → 代理服务器（带 App token）→ A 站 App API → 返回 ipLocation
-```
-
-需要：
-1. 一台服务器（可用 Cloudflare Workers 免费方案）
-2. 一个 Root 手机导出 App token
-3. token 过期后重新导出（约几个月一次）
-
-### 方案 B：浏览器扩展
-
-Chrome 扩展拥有更强的权限，可以：
-- 存储和管理 token
-- 绕过部分 CORS 限制
-- 做后台代理请求
-
-### 方案 C：等待官方支持
-
-A 站可能在未来版本中在网页版也显示 IP 属地。
-
----
-
-## 附录：ADB 命令参考
-
-```powershell
-# 查找 A 站 App 包名
-adb shell pm list packages | findstr acfun
-# 输出: tv.acfundanmaku.video
-
-# 尝试导出 SharedPreferences（需要 Root）
-adb shell "su -c 'cat /data/data/tv.acfundanmaku.video/shared_prefs/*.xml'" | findstr "apist token ssecurity"
-
-# 查看网络请求日志
-adb logcat -c; adb logcat | findstr "access_token comment/list"
-```
-
----
-
-## 致谢
-
-本分析基于 A 站 Android App 版本 6.80（`tv.acfundanmaku.video`），使用 jadx 进行反编译。
-
----
-
-*本文档仅供技术研究和学习交流使用。*
+MIT License
