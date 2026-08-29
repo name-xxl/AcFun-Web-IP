@@ -22,7 +22,15 @@
 
 ## 版本历史
 
-### v5.1.1 — 可视区域优先
+### v5.1.2 — Bug 修复
+
+- **直播中用户不显示 IP**：正在直播的用户头像链接从 `/u/xxx` 变成 `/live/xxx`，导致 userId 提取失败。修复后同时匹配两种链接格式。
+
+### v5.1.1 — Bug 修复
+
+- **个人主页 UP IP 重复注入**：MutationObserver 多次触发导致同一 UP 卡片注入多个 IP。用 `WeakSet` 标记已处理元素，防止重复。
+
+### v5.1.0 — 可视区域优先
 
 使用 `IntersectionObserver` 实现懒加载，只查询可见评论的 IP：
 
@@ -58,13 +66,13 @@
 
 ```json
 {
-  "ac173173": {
+  "ac48809309": {
     "users": {
-      "23682490": { "ip": "四川", "name": "AC娘本体" },
+      "13274260": { "ip": "四川", "name": "美食作家王刚" },
       "51737407": { "ip": "江西", "name": "name_xxl" }
     },
     "time": 1693312000000,
-    "url": "https://www.acfun.cn/a/ac173173"
+    "url": "https://www.acfun.cn/a/ac48809309"
   }
 }
 ```
@@ -164,6 +172,8 @@ A 站网页版评论 API (`/rest/pc-direct/comment/list`) 返回的评论数据*
 | IP 换行显示 | `.up-time` 是 block 元素 | 用 `appendChild` 而非 `insertBefore` |
 | 注入分批出现 | 每批查询完都注入 | 改用 IntersectionObserver |
 | 移动端 API 105001 | 缺少请求签名（Azeroth SDK） | 改用用户资料 API |
+| 直播中用户无 IP | 头像链接变成 `/live/xxx` | 同时匹配 `/u/` 和 `/live/` |
+| UP IP 重复注入 | Observer 多次触发 | WeakSet 标记已处理元素 |
 
 ## 许可
 
