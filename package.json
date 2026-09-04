@@ -1,6 +1,6 @@
 {
   "name": "acfun-reveal",
-  "version": "5.6.0",
+  "version": "5.6.1",
   "description": "A站网页版评论区 IP 属地显示油猴脚本",
   "scripts": {
     "build": "node build.js"

@@ -39,6 +39,10 @@
       .acr-actions button.acr-danger{background:#fff;border-color:#f5222d;color:#f5222d}
       .acr-actions button.acr-danger:hover{background:#fff1f0}
       .acr-panel-foot{padding:10px 14px;font-size:11px;color:#999;background:#fafafa;border-top:1px solid #f0f0f0}
+      .acr-ip:hover{color:#fd4c5d !important}
+      .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
+      .acr-toast.out{opacity:0;transition:opacity .3s}
+      @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     `;
     document.head.appendChild(style);
   }
@@ -113,7 +117,10 @@
     switchLabel.textContent = '缓存';
     const toggle = document.createElement('span');
     toggle.className = 'acr-switch' + (enabled ? ' on' : '');
-    toggle.addEventListener('click', () => setEnabled(!enabled));
+    toggle.addEventListener('click', () => {
+      setEnabled(!enabled);
+      toggle.classList.toggle('on', enabled);
+    });
     switchRow.append(switchLabel, toggle);
     body.appendChild(switchRow);
 
@@ -149,7 +156,7 @@
     actions.append(
       mkPanelBtn('导出', exportCache),
       mkPanelBtn('导入', importCache),
-      mkPanelBtn('清空', clearCacheWithConfirm, 'acr-danger'),
+      mkPanelBtn('清空', function() { clearCacheWithConfirm(this); }, 'acr-danger'),
     );
     actionRow.append(actionLabel, actions);
     body.appendChild(actionRow);

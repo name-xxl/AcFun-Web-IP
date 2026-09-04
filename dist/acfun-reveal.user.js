@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AcFunReveal - A站网页版显示 IP 属地
 // @namespace    http://acfun-reveal.local
-// @version      5.6.0
+// @version      5.6.1
 // @description  可视区域优先：只查询可见评论的 IP，滚动时自动加载
 // @author       name_xxl
 // @match        https://www.acfun.cn/*
@@ -20,7 +20,7 @@
   //  常量与配置：API 端点、DOM 选择器、各类阈值统一收拢于此
   //  A 站改版时只需调整本区块
   // ============================================================
-  const VERSION = '5.6.0';
+  const VERSION = '5.6.1';
 
   const CONFIG = {
     API: {
@@ -305,7 +305,7 @@
     const span = document.createElement('span');
     span.className = 'acr-ip';
     span.textContent = text ?? ` ${ip}`;
-    span.style.cssText = style ?? 'margin-left:3px;';
+    span.style.cssText = 'margin-left:3px;cursor:pointer;transition:color .2s;';
     span.title = `IP属地：${ip}\n（基于用户主页实时资料，不代表发布时的IP）`;
     if (queriedAt) span.title += `\n查询于：${new Date(queriedAt).toLocaleString()}`;
     if (uid) span.dataset.acrUid = String(uid);
@@ -593,6 +593,10 @@
       .acr-actions button.acr-danger{background:#fff;border-color:#f5222d;color:#f5222d}
       .acr-actions button.acr-danger:hover{background:#fff1f0}
       .acr-panel-foot{padding:10px 14px;font-size:11px;color:#999;background:#fafafa;border-top:1px solid #f0f0f0}
+      .acr-ip:hover{color:#fd4c5d !important}
+      .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
+      .acr-toast.out{opacity:0;transition:opacity .3s}
+      @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     `;
     document.head.appendChild(style);
   }
@@ -667,7 +671,10 @@
     switchLabel.textContent = '缓存';
     const toggle = document.createElement('span');
     toggle.className = 'acr-switch' + (enabled ? ' on' : '');
-    toggle.addEventListener('click', () => setEnabled(!enabled));
+    toggle.addEventListener('click', () => {
+      setEnabled(!enabled);
+      toggle.classList.toggle('on', enabled);
+    });
     switchRow.append(switchLabel, toggle);
     body.appendChild(switchRow);
 
@@ -703,7 +710,7 @@
     actions.append(
       mkPanelBtn('导出', exportCache),
       mkPanelBtn('导入', importCache),
-      mkPanelBtn('清空', clearCacheWithConfirm, 'acr-danger'),
+      mkPanelBtn('清空', function() { clearCacheWithConfirm(this); }, 'acr-danger'),
     );
     actionRow.append(actionLabel, actions);
     body.appendChild(actionRow);
@@ -729,20 +736,19 @@
     openPanel(span.dataset.acrUid || null);
   }, true);
   // ============================================================
-  //  缓存操作（面板与菜单共用）
+  //  缓存操作（面板与菜单共用）—— 静默操作，无 alert/confirm/prompt/reload
   // ============================================================
-  function persistAndReload(alertMessage) {
+  function persist() {
     save();
     saveUids();
-    if (alertMessage) alert(alertMessage);
-    location.reload();
   }
 
   function setEnabled(next) {
     enabled = next;
     writeStorage(CONFIG.CACHE.enabledKey, enabled);
     if (!enabled) clearAllCache();
-    persistAndReload(enabled ? '🟢 缓存已开启' : '🔴 缓存已关闭');
+    persist();
+    showToast(enabled ? '缓存已开启' : '缓存已关闭');
   }
 
   function describeDays() {
@@ -762,7 +768,7 @@
       ...logs,
     ].join('\n');
     GM_setClipboard?.(text, 'text');
-    alert('📋 日志已复制');
+    showToast('日志已复制');
   }
 
   function copyPageCache() {
@@ -771,54 +777,90 @@
       .map(([uid, data]) => ({ 用户ID: uid, 用户名: data.name, IP: data.ip }));
     console.table(rows);
     GM_setClipboard?.(JSON.stringify(rows, null, 2), 'text');
-    alert(`📊 ${rows.length} 条已复制`);
+    showToast(`${rows.length} 条已复制`);
   }
 
   function exportCache() {
     const payload = { version: VERSION, pages: cache, uids };
     GM_setClipboard?.(JSON.stringify(payload, null, 2), 'text');
-    alert(`📦 已复制：${Object.keys(cache).length} 个页面，${Object.keys(uids).length} 条 uid 缓存`);
+    showToast(`已复制：${Object.keys(cache).length} 个页面，${Object.keys(uids).length} 条 uid 缓存`);
   }
 
   function importCache() {
-    const input = prompt('粘贴缓存 JSON：');
-    if (!input) return;
-    let data;
-    try {
-      data = JSON.parse(input);
-    } catch (e) {
-      alert('❌ ' + e.message);
-      return;
-    }
-    // 兼容两种格式：新版 { version, pages, uids } 打包，旧版纯页面缓存
-    const bundled = data && typeof data === 'object' && (data.pages || data.uids);
-    let pageCount = 0;
-    for (const [key, entry] of Object.entries(bundled ? (data.pages || {}) : data)) {
-      if (entry?.d && !cache[key]) {
-        cache[key] = entry;
-        pageCount++;
+    const panel = document.querySelector('.acr-panel');
+    if (!panel) return;
+    const body = panel.querySelector('.acr-panel-body');
+    const oldBody = body.innerHTML;
+    body.innerHTML = `
+      <div style="margin:8px 0 4px">
+        <div style="font-size:13px;color:#333;margin-bottom:6px">粘贴缓存 JSON：</div>
+        <textarea class="acr-import-input" placeholder='{"version":"...","pages":{},"uids":{}}'
+          style="width:100%;height:100px;resize:vertical;border:1px solid #e5e5e5;border-radius:3px;padding:6px;font:12px/1.4 monospace;color:#333;box-sizing:border-box"></textarea>
+      </div>
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+        <button class="acr-import-cancel" style="border:1px solid #999;background:#f4f4f4;color:#666;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">取消</button>
+        <button class="acr-import-confirm" style="border:none;background:#fd4c5d;color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
+      </div>`;
+    body.querySelector('.acr-import-cancel').addEventListener('click', () => openPanel());
+    body.querySelector('.acr-import-confirm').addEventListener('click', () => {
+      const input = body.querySelector('.acr-import-input').value.trim();
+      if (!input) { showToast('请输入 JSON'); return; }
+      let data;
+      try { data = JSON.parse(input); } catch (e) { showToast('❌ ' + e.message); return; }
+      const bundled = data && typeof data === 'object' && (data.pages || data.uids);
+      let pageCount = 0;
+      for (const [key, entry] of Object.entries(bundled ? (data.pages || {}) : data)) {
+        if (entry?.d && !cache[key]) { cache[key] = entry; pageCount++; }
       }
-    }
-    let uidCount = 0;
-    if (bundled) {
-      for (const [uid, entry] of Object.entries(data.uids || {})) {
-        if (entry && !uids[uid]) {
-          uids[uid] = entry;
-          uidCount++;
+      let uidCount = 0;
+      if (bundled) {
+        for (const [uid, entry] of Object.entries(data.uids || {})) {
+          if (entry && !uids[uid]) { uids[uid] = entry; uidCount++; }
         }
       }
-    }
-    save();
-    saveUids();
-    loadPage();
-    alert(`📥 导入 ${pageCount} 个页面，${uidCount} 条 uid 缓存`);
-    location.reload();
+      persist();
+      loadPage();
+      showToast(`导入 ${pageCount} 个页面，${uidCount} 条 uid 缓存`);
+      openPanel();
+    });
   }
 
-  function clearCacheWithConfirm() {
-    if (!confirm('确定清空所有缓存？')) return;
-    clearAllCache();
-    alert('🗑️ 缓存已清空');
+  function clearCacheWithConfirm(btn) {
+    if (btn.dataset.acrConfirming) {
+      delete btn.dataset.acrConfirming;
+      clearAllCache();
+      showToast('缓存已清空');
+      btn.textContent = '清空';
+      return;
+    }
+    btn.dataset.acrConfirming = '1';
+    btn.textContent = '确认清空?';
+    setTimeout(() => { delete btn.dataset.acrConfirming; if (btn.isConnected) btn.textContent = '清空'; }, 3000);
+  }
+
+  function showToast(message) {
+    let container = document.getElementById('acr-toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'acr-toast-container';
+      container.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483647;display:flex;flex-direction:column;gap:6px;pointer-events:none';
+      document.body.appendChild(container);
+    }
+    if (!document.getElementById('acr-toast-style')) {
+      const style = document.createElement('style');
+      style.id = 'acr-toast-style';
+      style.textContent = `
+        .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
+        .acr-toast.out{opacity:0;transition:opacity .3s}
+        @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      `;
+      document.head.appendChild(style);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'acr-toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => { toast.classList.add('out'); setTimeout(() => toast.remove(), 300); }, 2000);
   }
   // ============================================================
   //  油猴菜单（只保留只读入口 + 面板兜底入口）
