@@ -9,171 +9,114 @@
 - ✅ 个人主页 UP IP 显示
 - ✅ 用户主页 IP 显示
 - ✅ 可视区域优先查询（IntersectionObserver）
-- ✅ 按页面缓存（文章/视频按 ac 号）
+- ✅ 全局 uid 缓存 + 按页面缓存（ac 号）
+- ✅ 串行限流队列（防风控）
 - ✅ 翻页/懒加载自动处理
 - ✅ SPA 导航自动刷新
+- ✅ 点击 IP 弹出原生风格设置面板
 - ✅ 缓存导入/导出
 
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)
-2. 新建脚本，粘贴 `AcFunReveal.user.js` 内容
-3. 保存，打开 A 站页面即可
+2. 新建脚本，粘贴 `dist/acfun-reveal.user.js` 内容
+3. 保存，登录 A 站后打开页面即可
 
-## 版本历史
+> 属地字段需要登录态，未登录时 API 返回空 `ipLocation`。
 
-### v5.1.2 — Bug 修复
+## 开发
 
-- **直播中用户不显示 IP**：正在直播的用户头像链接从 `/u/xxx` 变成 `/live/xxx`，导致 userId 提取失败。修复后同时匹配两种链接格式。
-
-### v5.1.1 — Bug 修复
-
-- **个人主页 UP IP 重复注入**：MutationObserver 多次触发导致同一 UP 卡片注入多个 IP。用 `WeakSet` 标记已处理元素，防止重复。
-
-### v5.1.0 — 可视区域优先
-
-使用 `IntersectionObserver` 实现懒加载，只查询可见评论的 IP：
+单文件油猴脚本 + 拼接式模块化（无打包器依赖，`node build.js` 即可）：
 
 ```
-页面加载 → 拦截评论 API → 建立 commentId→userId 映射
-  ↓
-评论进入视口 → 查询该用户 IP → 注入
-  ↓
-滚动 → 新评论进入视口 → 查询 → 注入
-  ↓
-已缓存 → 直接注入，不发请求
+src/
+  00-header.js        油猴元数据 + IIFE 开头
+  10-constants.js     CONFIG：API 端点、DOM 选择器、阈值（A 站改版只改这里）
+  20-utils.js         日志
+  30-storage.js       GM 存储、页面缓存、全局 uid 缓存（TTL/上限/迁移）
+  40-api.js           IP 查询：串行限流队列、页面 fetch、负缓存写入
+  50-inject.js        UID 提取、IP 标签构造与注入
+  60-intercept.js     拦截评论 API（fetch/XHR），建立 commentId→userId 映射
+  70-observers.js     IntersectionObserver / MutationObserver / 路由监听 / 三个注入场景
+  80-panel.js         设置面板（仿 A 站原生弹窗，主色 #fd4c5d）
+  85-cache-actions.js 缓存导入/导出/清空（面板与菜单共用）
+  90-menu.js          油猴菜单（3 项只读入口）
+  99-main.js          启动流程 + window.ACFunReveal 调试接口
 ```
 
-| 场景 | API 调用 | 注入时机 |
-|---|---|---|
-| 打开页面（25条评论，可见5条） | 5 次 | 立即 |
-| 滚动看到更多 | 逐个查询 | 进入视口时 |
-| 再次访问（有缓存） | 0 次 | 立即 |
-
-### v5.0.0 — 性能优化重构
-
-| 优化项 | 说明 |
-|---|---|
-| `WeakSet` 去重 | 已注入的评论元素跳过重复处理 |
-| `Promise` 去重 | 同一用户的 IP 查询不会重复发起 |
-| 统一 Observer | 一个 MutationObserver 管理所有 DOM 变化 |
-| 300ms 防抖 | 避免频繁 DOM 变化触发重复扫描 |
-| 代码精简 | 350 行 → 260 行 |
-
-### v3.2.0 — 缓存机制
-
-引入完整的缓存系统：
-
-```json
-{
-  "ac48809309": {
-    "users": {
-      "13274260": { "ip": "四川", "name": "美食作家王刚" },
-      "51737407": { "ip": "江西", "name": "name_xxl" }
-    },
-    "time": 1693312000000,
-    "url": "https://www.acfun.cn/a/ac48809309"
-  }
-}
+```bash
+node build.js            # 拼接 src/ -> dist/acfun-reveal.user.js（含版本一致性校验）
+node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面板样式
 ```
 
-- **开启缓存**：按 ac 号存储，再次访问直接读取
-- **关闭缓存**：每次重新查询，离开页面清除
-- **自定义天数**：0=永久，或设置 1/7/30 天自动过期
-- **导入/导出**：支持 JSON 格式
+版本号需同步三处：`package.json`、`src/00-header.js` 的 `@version`、`src/10-constants.js` 的 `VERSION`，build.js 会校验，不一致直接报错。
 
-### v3.0.0 — 按需查询
+## 设置面板
 
-去掉轮询定时器，改用 MutationObserver：
+点击页面上任意 IP 标签弹出（油猴菜单里也有 ⚙️ 设置面板兜底入口）：
 
-| 场景 | 之前 | 现在 |
-|---|---|---|
-| 打开页面 | 持续轮询 | 查询一次，等待 |
-| 翻页 | 轮询发现 | Observer 立即触发 |
-| 无操作 | 每 1.5 秒检查 | 不做任何事 |
-| 已查用户 | 每次检查缓存 | WeakSet 直接跳过 |
+- 用户资料卡片：用户名 / UID / IP属地 / 查询时间
+- 缓存开关
+- 页面缓存保留天数（永久/1天/7天/30天，即时生效）
+- 缓存管理：导出 / 导入 / 清空
 
 ## 技术原理
-
-### 核心发现
-
-A 站网页版评论 API (`/rest/pc-direct/comment/list`) 返回的评论数据**没有 IP 属地字段**。但用户资料 API (`/rest/pc-direct/user/userInfo?userId=xxx`) 返回的 `profile.ipLocation` **包含 IP 属地**。
-
-### 工作流程
 
 ```
 1. 拦截评论 API 响应 → 提取 commentId → userId 映射
 2. IntersectionObserver 监听评论元素进入视口
-3. 可见评论 → 查询用户资料 API → 获取 profile.ipLocation
-4. 将 IP 属地注入到评论区 .area-comment-from 容器末尾
+3. 可见评论 → 全局 uid 缓存 → 页面缓存 → 串行队列（200ms 间隔）→ userInfo API
+4. 将 profile.ipLocation 注入评论区 .area-comment-from
 ```
 
-### 为什么不用移动端 API
-
-移动端 API (`/rest/app/comment/list`) 的评论数据直接包含 `ipLocation`，但：
-
-- 需要 App 的 `access_token`（通过快手安全 SDK Azeroth 签名）
-- 签名算法在混淆的 native 代码中，无法从网页端复制
-- 网页端和 App 端的认证系统完全独立
-
-### 支持的页面
-
-| 页面 | 功能 | 缓存 |
-|---|---|---|
-| 文章 `/a/ac*` | 评论区 IP | ✅ 按 ac 号缓存 |
-| 视频 `/v/ac*` | 评论区 IP | ✅ 按 ac 号缓存 |
-| 个人主页 `/member` | UP IP | ❌ 实时查询 |
-| 用户主页 `/u/xxx` | 用户 IP | ❌ 实时查询 |
-
-## 菜单
-
-| 菜单 | 功能 |
-|---|---|
-| 🟢/🔴 缓存开关 | 开启/关闭缓存 |
-| ⏰ 设置缓存天数 | 0=永久, 1/7/30 天 |
-| 📋 复制全部日志 | 复制调试日志到剪贴板 |
-| 📊 查看本页缓存 | 查看当前页面的 IP 缓存 |
-| 📦 导出全部缓存 | 导出所有页面的缓存 JSON |
-| 📥 导入缓存 | 导入之前导出的缓存 |
-| 🗑️ 清空缓存 | 清除所有缓存数据 |
-
-## 性能
-
-| 指标 | 数值 |
-|---|---|
-| 内存占用 | ~60-100KB |
-| 首屏 API 调用 | 仅可见评论数（约5个） |
-| 缓存命中时 | 0 次 API 调用 |
-| CPU 开销 | 极低（IntersectionObserver 硬件加速） |
+- 网页版评论 API 不含 IP 字段；属地来自用户资料 API 的 `profile.ipLocation`（当前属地，非评论时属地）
+- `ipLocation` 需要请求方登录态：使用页面上下文 `fetch`（`credentials: 'include'`，自动携带含 HttpOnly 的完整 cookie）
+- 全局 uid 缓存 TTL 1 天（用户搬家后次日刷新），页面缓存按 ac 号、默认永久
+- 查询失败（无属地）写入 6 小时负缓存，避免反复请求
 
 ## 局限性
 
-- **IP 属地来源**：基于用户主页实时资料，不代表发布评论时的 IP
-- **覆盖率**：依赖用户资料 API 返回 `ipLocation`，部分用户可能没有
-- **实时性**：用户换城市后，显示的是当前城市（非评论时城市）
+- 属地基于用户主页实时资料，不代表发布评论时的 IP
+- 覆盖率依赖 API 返回，部分用户可能没有属地
+- 移动端 `m.acfun.cn` 已匹配但 DOM 选择器为 PC 端，暂未生效
 
-## 开发过程
+## 版本历史
 
-### 关键逆向发现
+### v5.6.0 — 模块化重构
 
-1. **App 反编译**（jadx）：发现 `ipLocation` 字段存在于 `CommentFloorContent`、`CommentRoot`、`CommentSub` 等类中
-2. **API 分析**：网页 API 不返回 `ipLocation`，移动端 API 需要签名认证
-3. **嗅探器**：通过自定义 API 嗅探脚本发现网页端 `/rest/pc-direct/user/userInfo` 返回 `profile.ipLocation`
-4. **DOM 分析**：通过保存页面 HTML 分析评论区的真实 DOM 结构
+- 拆分为 `src/` 12 个编号模块 + `build.js` 拼接构建（对齐 danmaku-sender 工程约定）
+- 设置面板样式对齐 A 站原生：主色 `#fd4c5d`、原生字体栈、原生圆角/边框规范
+- 新增构建期双重版本一致性校验、冒烟测试
 
-### 踩过的坑
+### v5.5.0 — 原生风格设置面板
 
-| 问题 | 原因 | 解决 |
-|---|---|---|
-| 注入不生效 | `[data-cid]` 选择器不对 | 改用 `[data-commentid]` |
-| UP IP 不显示 | `log-item` 的 JSON 被 HTML 编码 | 改用链接提取 userId |
-| 个人主页不触发 | `/member` vs `/member/` 路径不匹配 | 去掉尾部斜杠 |
-| 控制台无日志 | `log()` 不写入 `allLogs` 数组 | 统一用 `addLog()` |
-| IP 换行显示 | `.up-time` 是 block 元素 | 用 `appendChild` 而非 `insertBefore` |
-| 注入分批出现 | 每批查询完都注入 | 改用 IntersectionObserver |
-| 移动端 API 105001 | 缺少请求签名（Azeroth SDK） | 改用用户资料 API |
-| 直播中用户无 IP | 头像链接变成 `/live/xxx` | 同时匹配 `/u/` 和 `/live/` |
-| UP IP 重复注入 | Observer 多次触发 | WeakSet 标记已处理元素 |
+- 油猴菜单 7 项 → 3 项（设置面板 / 复制日志 / 查看缓存），设置收进点击 IP 弹出的面板
+- 面板含用户资料卡片（用户名/UID/属地/查询时间）
+- 导出格式升级为 `{ version, pages, uids }` 打包，兼容旧版纯页面缓存导入
+
+### v5.4.0 — 全局缓存与限流
+
+- 全局 uid 二级缓存（TTL 1 天、上限 5000、旧页面缓存自动迁移）：同一用户跨视频不再重复查询
+- 请求串行队列 + 200ms 强制间隔，防风控
+- 注入标签 tooltip 显示查询时间；原地重渲染的评论从缓存补注入
+- `commentUserMap` 路由切换时清空；新增 `@noframes`
+- 移除 `GM_xmlhttpRequest`，统一页面 fetch（`credentials: 'include'` + 10s 超时）
+
+### v5.3.1 — 登录态修复
+
+- 请求改用页面上下文 `fetch`：同源自动携带全部 cookie（含 HttpOnly），修复"登录了但 ipLocation 全空"
+- 根因：v5.2.0 手动传 `document.cookie` 读不到 HttpOnly 登录凭证，残缺 Cookie 覆盖了真实凭证
+
+### v5.3.0 — 质量重构
+
+- CONFIG 集中配置；负缓存（失败 6 小时不重试）；缓存上限 500 页
+- 存储封装、函数拆分、菜单数据驱动、暴露 `window.ACFunReveal` 调试接口
+- 修复：失败不缓存导致重复请求、UP 注入 WeakSet 提前标记、缓存无限膨胀、注入点缺失静默失败
+
+### v5.2.0 及更早
+
+见 [GitHub 仓库 README](https://github.com/name-xxl/AcFun-Web-IP)。
+
 
 ## 许可
 
