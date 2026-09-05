@@ -14,6 +14,8 @@ const FILES = [
     '30-storage.js',
     '40-api.js',
     '50-inject.js',
+    '55-device-data.js',
+    '56-device.js',
     '60-intercept.js',
     '70-observers.js',
     '80-panel.js',

@@ -157,7 +157,8 @@ global.window = {
 const SRC_DIR = path.join(__dirname, '..', 'src');
 const FILES = [
   '00-header.js', '10-constants.js', '20-utils.js', '30-storage.js',
-  '40-api.js', '50-inject.js', '60-intercept.js', '70-observers.js',
+  '40-api.js', '50-inject.js', '55-device-data.js', '56-device.js',
+  '60-intercept.js', '70-observers.js',
   '80-panel.js', '85-cache-actions.js', '90-menu.js', '99-main.js',
 ];
 
@@ -291,6 +292,46 @@ group('extractUidFromComment');
   const comment = new FakeElement('div', {});
   assert('无 UID 信息', api.extractUidFromComment(comment), null);
 }
+
+// ── 9. parseDeviceModelsText ─────────────────────────────
+group('parseDeviceModelsText');
+assert('MobileModels 格式',
+  api.parseDeviceModelsText('`RMX3700`: 真我 GT Neo5 SE'),
+  { RMX3700: '真我 GT Neo5 SE' }
+);
+assert('一行多个代码',
+  api.parseDeviceModelsText('`ALN-AL00` `ALN-AL80`: HUAWEI Mate 60 Pro'),
+  { 'ALN-AL00': 'HUAWEI Mate 60 Pro', 'ALN-AL80': 'HUAWEI Mate 60 Pro' }
+);
+assert('Apple gist 冒号格式',
+  api.parseDeviceModelsText('iPhone3,1 : iPhone 4'),
+  { 'iPhone3,1': 'iPhone 4' }
+);
+assert('Apple 空格格式',
+  api.parseDeviceModelsText('iPhone3,1 iPhone 4'),
+  { 'iPhone3,1': 'iPhone 4' }
+);
+assert('跳过注释与空行',
+  api.parseDeviceModelsText('# 注释\n\n// 斜杠注释\n`RMX3700`: 真我 GT Neo5 SE'),
+  { RMX3700: '真我 GT Neo5 SE' }
+);
+assert('空输入', api.parseDeviceModelsText(''), {});
+assert('混合格式多行',
+  api.parseDeviceModelsText('`V2324A`: vivo X100 Pro\niPhone3,1 : iPhone 4'),
+  { V2324A: 'vivo X100 Pro', 'iPhone3,1': 'iPhone 4' }
+);
+
+// ── 10. findFriendlyName ─────────────────────────────────
+group('findFriendlyName');
+assert('精确匹配 iPhone3,1', api.findFriendlyName('iPhone3,1'), 'iPhone 4');
+assert('精确匹配 iPhone14,5', api.findFriendlyName('iPhone14,5'), 'iPhone 13');
+assert('大小写不敏感', api.findFriendlyName('rmx3700'), '真我 GT Neo5 SE');
+assert('去尾字母匹配 V2324B', api.findFriendlyName('V2324B'), 'vivo X100 Pro');
+assert('前缀包含匹配 V2324AX', api.findFriendlyName('V2324AX'), 'vivo X100 Pro');
+assert('未收录返回 null', api.findFriendlyName('ZZZZ9999X'), null);
+assert('过短返回 null', api.findFriendlyName('ab'), null);
+assert('空值返回 null', api.findFriendlyName(''), null);
+assert('null 返回 null', api.findFriendlyName(null), null);
 
 // ── 结果 ─────────────────────────────────────────────────
 console.log(`\n${'─'.repeat(40)}`);

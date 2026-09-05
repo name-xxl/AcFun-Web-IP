@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         AcFunReveal - A站网页版显示 IP 属地
 // @namespace    http://acfun-reveal.local
-// @version      5.7.0
-// @description  可视区域优先：只查询可见评论的 IP，滚动时自动加载
+// @version      5.8.0
+// @description  显示评论 IP 属地（可视区域优先），并将设备型号代号替换为友好名称
 // @author       name_xxl
 // @match        https://www.acfun.cn/*
 // @match        https://m.acfun.cn/*

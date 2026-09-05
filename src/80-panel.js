@@ -161,6 +161,9 @@
     actionRow.append(actionLabel, actions);
     body.appendChild(actionRow);
 
+    // —— 设备型号美化：开关 + 数据管理（56-device.js）
+    buildDeviceRows(body);
+
     const foot = document.createElement('div');
     foot.className = 'acr-panel-foot';
     foot.textContent = `v${VERSION} · 属地基于用户主页实时资料，不代表发布时的IP`;

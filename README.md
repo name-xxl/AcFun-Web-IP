@@ -1,10 +1,12 @@
-# AcFunReveal - A站网页版显示 IP 属地
+# AcFunReveal - A站网页版显示 IP 属地 + 设备型号美化
 
-> 通过 A 站用户资料 API 获取评论者 IP 属地，注入到网页版评论区。
+> 通过 A 站用户资料 API 获取评论者 IP 属地，注入到网页版评论区；
+> 同时把评论设备标签里的内部代号（`RMX3619`、`iPhone3,1`）替换为友好名称（`真我 V30`、`iPhone 4`）。
 
 ## 功能
 
 - ✅ 评论区显示 IP 属地（设备型号/网页端后面）
+- ✅ 设备型号代号替换为友好名称（内置 ~1000 条主流机型，可导入扩充）
 - ✅ 楼中楼/折叠评论支持
 - ✅ 个人主页 UP IP 显示
 - ✅ 用户主页 IP 显示
@@ -14,7 +16,7 @@
 - ✅ 翻页/懒加载自动处理
 - ✅ SPA 导航自动刷新
 - ✅ 点击 IP 弹出原生风格设置面板
-- ✅ 缓存导入/导出
+- ✅ 缓存/设备数据导入/导出
 
 ## 安装
 
@@ -36,6 +38,8 @@ src/
   30-storage.js       GM 存储、页面缓存、全局 uid 缓存（TTL/上限/迁移）
   40-api.js           IP 查询：串行限流队列、页面 fetch、负缓存写入
   50-inject.js        UID 提取、IP 标签构造与注入
+  55-device-data.js   设备型号内置表（~1000 条，由 tools/gen-device-data.js 生成，勿手改）
+  56-device.js        设备型号美化：四级匹配、DOM 替换、点击切换、导入/导出
   60-intercept.js     拦截评论 API（fetch/XHR），建立 commentId→userId 映射
   70-observers.js     IntersectionObserver / MutationObserver / 路由监听 / 三个注入场景
   80-panel.js         设置面板（仿 A 站原生弹窗，主色 #fd4c5d）
@@ -46,7 +50,9 @@ src/
 
 ```bash
 node build.js            # 拼接 src/ -> dist/acfun-reveal.user.js（含版本一致性校验）
+node tools/unit-test.js  # 单元测试：纯函数输入输出（46 项）
 node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面板样式
+node tools/gen-device-data.js <MobileModels 数据目录>  # 重新生成内置设备型号表
 ```
 
 版本号需同步三处：`package.json`、`src/00-header.js` 的 `@version`、`src/10-constants.js` 的 `VERSION`，build.js 会校验，不一致直接报错。
@@ -59,6 +65,17 @@ node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面�
 - 缓存开关
 - 页面缓存保留天数（永久/1天/7天/30天，即时生效）
 - 缓存管理：导出 / 导入 / 清空
+- 设备型号美化开关
+- 设备数据管理：导入（MobileModels `.md` / Apple 表 `.txt` / 粘贴文本）/ 导出 / 重置
+
+## 设备型号美化
+
+A 站评论设备标签显示的是厂商内部代号（如 `RMX3619`、`iPhone3,1`、`NOH-AN00`），脚本通过查表将其替换为友好名称（`真我 V30`、`iPhone 4`、`华为 Mate 40 Pro`）：
+
+- **内置 ~1000 条**：Apple 全系 + 各安卓品牌近年国行机型，由 `tools/gen-device-data.js` 从上游数据生成
+- **匹配策略**：精确 → 大小写不敏感 → 去尾字母变体（`V2324B` → `V2324A`）→ 前缀包含，带查找缓存
+- **点击切换**：点击替换后的型号可在原始代号与友好名称之间切换
+- **数据扩充**：面板「导入」支持 [MobileModels](https://github.com/KHwang9883/MobileModels) 的 `.md` 文件（多选）与 [Apple 设备表](https://gist.github.com/adamawolf/3048717) 的 `.txt` 文件，合并模式可选跳过已存在条目
 
 ## 技术原理
 
@@ -81,6 +98,13 @@ node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面�
 - 移动端 `m.acfun.cn` 已匹配但 DOM 选择器为 PC 端，暂未生效
 
 ## 版本历史
+
+### v5.8.0 — 合并设备型号美化
+
+- 合并 AcFunDeviceReveal：评论设备标签的内部代号替换为友好名称（`RMX3619` → `真我 V30`）
+- 内置 ~1000 条型号数据，由 `tools/gen-device-data.js` 从 MobileModels / Apple gist 自动生成（旧手写表存在大量错误映射与重复键，全部废弃）
+- 面板新增设备美化开关与设备数据导入/导出/重置；油猴菜单保持 3 项
+- 设备替换复用全局 MutationObserver 与路由监听，不再单独扫描
 
 ### v5.6.0 — 模块化重构
 
@@ -120,4 +144,8 @@ node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面�
 
 ## 许可
 
-MIT License
+MIT License（脚本代码）
+
+设备型号数据来自开源项目，遵循其自身许可：
+- [KHwang9883/MobileModels](https://github.com/KHwang9883/MobileModels) — CC BY-NC-SA 4.0（内置表与导入数据来源）
+- [adamawolf/Apple_mobile_device_types](https://gist.github.com/adamawolf/3048717) — Apple 设备型号对照

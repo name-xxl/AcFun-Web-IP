@@ -9,6 +9,8 @@
   pruneExpiredPages();
   save();
   loadPage();
+  loadDeviceDB();
+  processDeviceModels();
 
   hookFetch();
   hookXHR();
@@ -27,6 +29,10 @@
     parseUidFromHref,
     isCommentUrl,
     isFailureCacheFresh,
+    findFriendlyName,
+    parseDeviceModelsText,
+    processDeviceModels,
+    importDeviceModels,
     // 内部状态（只读调试用）
     getState: () => ({
       enabled,
@@ -35,9 +41,11 @@
       cachePages: Object.keys(cache).length,
       pageDataSize: Object.keys(pageData).length,
       uidCacheSize: Object.keys(uids).length,
+      deviceEnabled: deviceSettings.enabled,
+      deviceModels: Object.keys(deviceDB).length,
     }),
     getLogs: () => logs.slice(),
   };
 
-  log(`🚀 AcFunReveal v${VERSION} | ${pageId || '无缓存'} | ${enabled ? describeDays() : '关闭'} | ${Object.keys(pageData).length}条`);
+  log(`🚀 AcFunReveal v${VERSION} | ${pageId || '无缓存'} | ${enabled ? describeDays() : '关闭'} | ${Object.keys(pageData).length}条 | 设备库 ${Object.keys(deviceDB).length} 条${deviceSettings.enabled ? '' : ' (美化关闭)'}`);
 })();

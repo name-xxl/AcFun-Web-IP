@@ -138,6 +138,7 @@
   }
 
   function onDomChange() {
+    processDeviceModels();
     observeComments();
     if (location.pathname.includes('/member')) injectUpIp();
     if (/\/u\/\d+/.test(location.pathname)) injectProfileIp();

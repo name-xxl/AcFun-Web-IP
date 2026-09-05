@@ -46,6 +46,9 @@ for (const fn of [
   'loadPage', 'saveUids', 'getFreshUidInfo',   // storage
   'scheduleRequest', 'queryIpRemote',          // api
   'makeIpSpan', 'injectIntoComment',           // inject
+  'loadDeviceDB', 'findFriendlyName',          // device
+  'parseDeviceModelsText', 'processDeviceModels',
+  'buildDeviceRows', 'openDeviceImport',
   'hookFetch', 'hookXHR', 'extractCommentList',// intercept
   'observeComments', 'processVisibleComment',  // observers
   'openPanel', 'ensurePanelStyle',             // panel
@@ -64,6 +67,12 @@ check('无 GM_xmlhttpRequest 残留', !src.includes('GM_xmlhttpRequest'));
 
 // 6. 面板样式对齐 A 站原生主色
 check('面板主色 #fd4c5d', src.includes('#fd4c5d'));
+
+// 7. 设备型号功能要点
+check('内置设备数据表存在', src.includes('const DEVICE_BUILTIN'));
+check('设备数据存储 key', src.includes('acr_device_models'));
+check('deviceModel 选择器接入', src.includes('.deviceModel'));
+check('MobileModels 数据来源署名', src.includes('KHwang9883/MobileModels'));
 
 if (failed) {
   console.error(`\n${failed} 项未通过`);

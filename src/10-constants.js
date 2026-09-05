@@ -2,7 +2,7 @@
   //  常量与配置：API 端点、DOM 选择器、各类阈值统一收拢于此
   //  A 站改版时只需调整本区块
   // ============================================================
-  const VERSION = '5.7.0';
+  const VERSION = '5.8.0';
 
   const CONFIG = {
     API: {
@@ -56,4 +56,14 @@
       logLimit: 500,
     },
     PAGE_ID_PATTERN: /\/[av]\/(ac?\d+)/i,
+    // 设备型号美化（56-device.js）
+    DEVICE: {
+      selector: '.deviceModel',
+      processedAttr: 'data-acr-done',
+      manualAttr: 'data-acr-manual',
+      storageKey: 'acr_device_models',
+      metaKey: 'acr_device_models_meta',
+      settingsKey: 'acr_device_settings',
+      cacheMaxSize: 500,
+    },
   };
