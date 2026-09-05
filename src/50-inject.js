@@ -8,16 +8,33 @@
   }
 
   function extractUidFromComment(el) {
+    // 尝试从用户属性链接提取（默认模式）
     const attrLink = el.querySelector(CONFIG.SELECTORS.userAttrLink);
     if (attrLink?.dataset.userid) return parseInt(attrLink.dataset.userid);
 
-    const profileLink = el.querySelector(CONFIG.SELECTORS.profileLink);
+    // 尝试从用户属性链接提取（盖楼模式）
+    const floorAttrLink = el.querySelector(CONFIG.SELECTORS_FLOOR.userAttrLink);
+    if (floorAttrLink?.dataset.uid) return parseInt(floorAttrLink.dataset.uid);
+
+    // 从个人主页链接提取
+    const profileLink = el.querySelector(CONFIG.PROFILE_LINK);
     const uid = parseUidFromHref(profileLink?.href);
     if (uid) return uid;
 
+    // 从头像提取
+    return extractUidFromAvatar(el);
+  }
+
+  function extractUidFromAvatar(el) {
+    // 尝试默认模式头像
     const avatar = el.querySelector(CONFIG.SELECTORS.avatar);
-    const avatarMatch = avatar?.src.match(CONFIG.SELECTORS.avatarUidPattern);
-    return avatarMatch ? parseInt(avatarMatch[1]) : null;
+    const match = avatar?.src.match(CONFIG.SELECTORS.avatarUidPattern);
+    if (match) return parseInt(match[1]);
+
+    // 尝试盖楼模式头像
+    const floorAvatar = el.querySelector(CONFIG.SELECTORS_FLOOR.avatar);
+    const floorMatch = floorAvatar?.src.match(CONFIG.SELECTORS_FLOOR.avatarUidPattern);
+    return floorMatch ? parseInt(floorMatch[1]) : null;
   }
 
   function makeIpSpan(ip, { text, style, queriedAt, uid } = {}) {
@@ -33,18 +50,32 @@
 
   function injectIntoComment(el, ip, { queriedAt, uid } = {}) {
     if (!ip || el.querySelector('.acr-ip')) return;
-    const anchor = el.querySelector(CONFIG.SELECTORS.commentFrom);
+    
+    // 尝试默认模式的注入点
+    let anchor = el.querySelector(CONFIG.SELECTORS.commentFrom);
+    let mode = '默认';
+    
+    // 如果默认模式找不到，尝试盖楼模式
     if (!anchor) {
-      addLog('warn', `⚠️ 注入点缺失 (.area-comment-from): commentId=${el.getAttribute('data-commentid')}`);
+      anchor = el.querySelector(CONFIG.SELECTORS_FLOOR.commentFrom);
+      mode = '盖楼';
+    }
+    
+    if (!anchor) {
+      const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
+      addLog('warn', `⚠️ 注入点缺失: commentId=${commentId}`);
       return;
     }
     anchor.appendChild(makeIpSpan(ip, { queriedAt, uid }));
-    addLog('success', `🎉 ${ip}`);
+    addLog('debug', `🎉 ${ip} (${mode}模式)`);
   }
 
   // 节点被 A 站原地重渲染后不会再次进入 IntersectionObserver，从缓存直接补注入
   function injectFromCache(el) {
-    const commentId = el.getAttribute('data-commentid');
+    // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
+    const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
+    if (!commentId) return;
+    
     const uid = commentUserMap.get(commentId) || extractUidFromComment(el);
     if (!uid) return;
     const fresh = getFreshUidInfo(uid);

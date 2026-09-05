@@ -27,13 +27,15 @@
       userInfo: (uid) => `https://www.acfun.cn/rest/pc-direct/user/userInfo?userId=${uid}`,
     },
     COMMENT_URL_PATTERNS: ['/comment/list', '/comment/sublist', '/comment/subComment', '/comment/reply'],
+    // 通用选择器（两种模式共用）
+    PROFILE_LINK: 'a[href*="/u/"]',
+    // 默认模式选择器
     SELECTORS: {
       commentRoot: '[data-commentid]',
       commentFrom: '.area-comment-from',
       commentSkipSelf: '.area-sec-seemore',
       commentSkipParent: '.area-sec-more',
       userAttrLink: 'a[data-userid]',
-      profileLink: 'a[href*="/u/"]',
       avatar: 'img.avatar',
       avatarUidPattern: /newUpload\/(\d+)_/,
       feedTime: '.feed-time',
@@ -42,6 +44,14 @@
       upLink: 'a[href*="/u/"], a[href*="/live/"]',
       profileInfo: '#ac-space-info[data-uid]',
       profileTop: '.top',
+    },
+    // 盖楼模式选择器
+    SELECTORS_FLOOR: {
+      commentRoot: '.main-comment-item, .fc-comment-item',
+      commentFrom: '.comment-item-footer-left',
+      userAttrLink: 'a.name[data-uid]',
+      avatar: 'img.fc-avatar',
+      avatarUidPattern: /\/u\/(\d+)/,
     },
     OBSERVER: {
       rootMargin: '200px',   // 提前 200px 开始加载
@@ -69,15 +79,18 @@
   //  日志
   // ============================================================
   const logs = [];
+  const DEBUG = false; // 调试模式：设为 true 可输出详细日志
 
   const log = (...args) => console.log('%c[AcFunReveal]', 'color:#4caf50;font-weight:bold', ...args);
 
-  const LOG_ICONS = { info: 'ℹ️', success: '✅', error: '❌', warn: '⚠️' };
+  const LOG_ICONS = { debug: '🔍', info: 'ℹ️', success: '✅', error: '❌', warn: '⚠️' };
 
   function addLog(level, ...args) {
     const message = args.map(x => (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ');
     logs.push(`[${new Date().toLocaleTimeString()}] [${level}] ${message}`);
     if (logs.length > CONFIG.CACHE.logLimit) logs.shift();
+    // debug 级别只在调试模式下输出
+    if (level === 'debug' && !DEBUG) return;
     log(LOG_ICONS[level] || LOG_ICONS.info, ...args);
   }
   // ============================================================
@@ -240,7 +253,7 @@
   // 用页面上下文 fetch（同源自动携带全部 cookie，含 HttpOnly），不依赖脚本管理器的 cookie 行为
   function applyUserInfo(uid, data) {
     const ip = data.profile?.ipLocation || null;
-    addLog('info', `📡 API响应: userId=${uid}, ipLocation="${data.profile?.ipLocation || ''}", result=${data.result}`);
+    addLog('debug', `📡 API响应: userId=${uid}, ipLocation="${data.profile?.ipLocation || ''}", result=${data.result}`);
     const now = Date.now();
     if (ip) {
       uids[uid] = { ip, name: data.profile?.name || '', t: now };
@@ -289,16 +302,33 @@
   }
 
   function extractUidFromComment(el) {
+    // 尝试从用户属性链接提取（默认模式）
     const attrLink = el.querySelector(CONFIG.SELECTORS.userAttrLink);
     if (attrLink?.dataset.userid) return parseInt(attrLink.dataset.userid);
 
-    const profileLink = el.querySelector(CONFIG.SELECTORS.profileLink);
+    // 尝试从用户属性链接提取（盖楼模式）
+    const floorAttrLink = el.querySelector(CONFIG.SELECTORS_FLOOR.userAttrLink);
+    if (floorAttrLink?.dataset.uid) return parseInt(floorAttrLink.dataset.uid);
+
+    // 从个人主页链接提取
+    const profileLink = el.querySelector(CONFIG.PROFILE_LINK);
     const uid = parseUidFromHref(profileLink?.href);
     if (uid) return uid;
 
+    // 从头像提取
+    return extractUidFromAvatar(el);
+  }
+
+  function extractUidFromAvatar(el) {
+    // 尝试默认模式头像
     const avatar = el.querySelector(CONFIG.SELECTORS.avatar);
-    const avatarMatch = avatar?.src.match(CONFIG.SELECTORS.avatarUidPattern);
-    return avatarMatch ? parseInt(avatarMatch[1]) : null;
+    const match = avatar?.src.match(CONFIG.SELECTORS.avatarUidPattern);
+    if (match) return parseInt(match[1]);
+
+    // 尝试盖楼模式头像
+    const floorAvatar = el.querySelector(CONFIG.SELECTORS_FLOOR.avatar);
+    const floorMatch = floorAvatar?.src.match(CONFIG.SELECTORS_FLOOR.avatarUidPattern);
+    return floorMatch ? parseInt(floorMatch[1]) : null;
   }
 
   function makeIpSpan(ip, { text, style, queriedAt, uid } = {}) {
@@ -314,18 +344,32 @@
 
   function injectIntoComment(el, ip, { queriedAt, uid } = {}) {
     if (!ip || el.querySelector('.acr-ip')) return;
-    const anchor = el.querySelector(CONFIG.SELECTORS.commentFrom);
+    
+    // 尝试默认模式的注入点
+    let anchor = el.querySelector(CONFIG.SELECTORS.commentFrom);
+    let mode = '默认';
+    
+    // 如果默认模式找不到，尝试盖楼模式
     if (!anchor) {
-      addLog('warn', `⚠️ 注入点缺失 (.area-comment-from): commentId=${el.getAttribute('data-commentid')}`);
+      anchor = el.querySelector(CONFIG.SELECTORS_FLOOR.commentFrom);
+      mode = '盖楼';
+    }
+    
+    if (!anchor) {
+      const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
+      addLog('warn', `⚠️ 注入点缺失: commentId=${commentId}`);
       return;
     }
     anchor.appendChild(makeIpSpan(ip, { queriedAt, uid }));
-    addLog('success', `🎉 ${ip}`);
+    addLog('debug', `🎉 ${ip} (${mode}模式)`);
   }
 
   // 节点被 A 站原地重渲染后不会再次进入 IntersectionObserver，从缓存直接补注入
   function injectFromCache(el) {
-    const commentId = el.getAttribute('data-commentid');
+    // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
+    const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
+    if (!commentId) return;
+    
     const uid = commentUserMap.get(commentId) || extractUidFromComment(el);
     if (!uid) return;
     const fresh = getFreshUidInfo(uid);
@@ -391,10 +435,10 @@
         commentUserMap.set(String(comment.commentId), comment.userId);
       }
     }
-    addLog('info', `📋 ${list.length} 条评论，映射: ${commentUserMap.size}`);
+    addLog('debug', `📋 ${list.length} 条评论，映射: ${commentUserMap.size}`);
     if (!fieldLayoutLogged) {
       fieldLayoutLogged = true;
-      addLog('info', `📋 首条评论字段: ${Object.keys(list[0]).join(', ')}`);
+      addLog('debug', `📋 首条评论字段: ${Object.keys(list[0]).join(', ')}`);
     }
     observeComments();
   }
@@ -410,9 +454,15 @@
   }, { rootMargin: CONFIG.OBSERVER.rootMargin });
 
   function observeComments() {
-    const elements = document.querySelectorAll(CONFIG.SELECTORS.commentRoot);
+    // 同时查询两种模式的评论元素
+    const defaultElements = document.querySelectorAll(CONFIG.SELECTORS.commentRoot);
+    const floorElements = document.querySelectorAll(CONFIG.SELECTORS_FLOOR.commentRoot);
+    
+    // 合并去重（使用 Set）
+    const allElements = new Set([...defaultElements, ...floorElements]);
+    
     let newlyObserved = 0;
-    for (const el of elements) {
+    for (const el of allElements) {
       if (isSkippableComment(el)) continue;
       if (el.querySelector('.acr-ip')) continue;
       if (el._acrObserved) {
@@ -423,18 +473,27 @@
       visibilityObserver.observe(el);
       newlyObserved++;
     }
-    if (newlyObserved) addLog('info', `👁️ 新增观察: ${newlyObserved} 个`);
+    if (newlyObserved) addLog('debug', `👁️ 新增观察: ${newlyObserved} 个`);
   }
 
   function isSkippableComment(el) {
-    return el.classList.contains(CONFIG.SELECTORS.commentSkipSelf.slice(1))
-      || !!el.closest(CONFIG.SELECTORS.commentSkipParent);
+    // 默认模式的跳过逻辑
+    const skipSelfClass = CONFIG.SELECTORS.commentSkipSelf.slice(1); // 去掉开头的 '.'
+    const skipParentSelector = CONFIG.SELECTORS.commentSkipParent;
+    
+    // 检查是否是"查看更多"类型的评论（默认模式特有）
+    if (el.classList.contains(skipSelfClass)) return true;
+    if (el.closest(skipParentSelector)) return true;
+    
+    // 盖楼模式没有这些跳过条件，直接返回 false
+    return false;
   }
 
   async function processVisibleComment(el) {
     if (el.querySelector('.acr-ip') || isSkippableComment(el)) return;
 
-    const commentId = el.getAttribute('data-commentid');
+    // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
+    const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
     const uid = commentUserMap.get(commentId) || extractUidFromComment(el);
     if (!uid) {
       addLog('warn', `⚠️ 无法提取 userId (commentId: ${commentId})`);
@@ -444,16 +503,16 @@
     const fresh = getFreshUidInfo(uid);
     if (fresh) {
       if (fresh.ip) {
-        addLog('success', `📦 从缓存注入: ${uid} → ${fresh.ip}`);
+        addLog('debug', `📦 从缓存注入: ${uid} → ${fresh.ip}`);
         injectIntoComment(el, fresh.ip, { queriedAt: fresh.t, uid });
       }
       return;
     }
 
-    addLog('info', `🔍 处理评论: commentId=${commentId}, userId=${uid}`);
+    addLog('debug', `🔍 处理评论: commentId=${commentId}, userId=${uid}`);
     const ip = await getIp(uid);
     if (ip) {
-      addLog('success', `🎉 查询注入: ${uid} → ${ip}`);
+      addLog('debug', `🎉 查询注入: ${uid} → ${ip}`);
       injectIntoComment(el, ip, { queriedAt: uids[uid]?.t, uid });
     } else {
       addLog('warn', `❌ 查询失败: ${uid} (ipLocation 为空)`);

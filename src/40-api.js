@@ -30,7 +30,7 @@
   // 用页面上下文 fetch（同源自动携带全部 cookie，含 HttpOnly），不依赖脚本管理器的 cookie 行为
   function applyUserInfo(uid, data) {
     const ip = data.profile?.ipLocation || null;
-    addLog('info', `📡 API响应: userId=${uid}, ipLocation="${data.profile?.ipLocation || ''}", result=${data.result}`);
+    addLog('debug', `📡 API响应: userId=${uid}, ipLocation="${data.profile?.ipLocation || ''}", result=${data.result}`);
     const now = Date.now();
     if (ip) {
       uids[uid] = { ip, name: data.profile?.name || '', t: now };

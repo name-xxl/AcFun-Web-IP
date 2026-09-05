@@ -10,9 +10,15 @@
   }, { rootMargin: CONFIG.OBSERVER.rootMargin });
 
   function observeComments() {
-    const elements = document.querySelectorAll(CONFIG.SELECTORS.commentRoot);
+    // 同时查询两种模式的评论元素
+    const defaultElements = document.querySelectorAll(CONFIG.SELECTORS.commentRoot);
+    const floorElements = document.querySelectorAll(CONFIG.SELECTORS_FLOOR.commentRoot);
+    
+    // 合并去重（使用 Set）
+    const allElements = new Set([...defaultElements, ...floorElements]);
+    
     let newlyObserved = 0;
-    for (const el of elements) {
+    for (const el of allElements) {
       if (isSkippableComment(el)) continue;
       if (el.querySelector('.acr-ip')) continue;
       if (el._acrObserved) {
@@ -23,18 +29,27 @@
       visibilityObserver.observe(el);
       newlyObserved++;
     }
-    if (newlyObserved) addLog('info', `👁️ 新增观察: ${newlyObserved} 个`);
+    if (newlyObserved) addLog('debug', `👁️ 新增观察: ${newlyObserved} 个`);
   }
 
   function isSkippableComment(el) {
-    return el.classList.contains(CONFIG.SELECTORS.commentSkipSelf.slice(1))
-      || !!el.closest(CONFIG.SELECTORS.commentSkipParent);
+    // 默认模式的跳过逻辑
+    const skipSelfClass = CONFIG.SELECTORS.commentSkipSelf.slice(1); // 去掉开头的 '.'
+    const skipParentSelector = CONFIG.SELECTORS.commentSkipParent;
+    
+    // 检查是否是"查看更多"类型的评论（默认模式特有）
+    if (el.classList.contains(skipSelfClass)) return true;
+    if (el.closest(skipParentSelector)) return true;
+    
+    // 盖楼模式没有这些跳过条件，直接返回 false
+    return false;
   }
 
   async function processVisibleComment(el) {
     if (el.querySelector('.acr-ip') || isSkippableComment(el)) return;
 
-    const commentId = el.getAttribute('data-commentid');
+    // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
+    const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
     const uid = commentUserMap.get(commentId) || extractUidFromComment(el);
     if (!uid) {
       addLog('warn', `⚠️ 无法提取 userId (commentId: ${commentId})`);
@@ -44,16 +59,16 @@
     const fresh = getFreshUidInfo(uid);
     if (fresh) {
       if (fresh.ip) {
-        addLog('success', `📦 从缓存注入: ${uid} → ${fresh.ip}`);
+        addLog('debug', `📦 从缓存注入: ${uid} → ${fresh.ip}`);
         injectIntoComment(el, fresh.ip, { queriedAt: fresh.t, uid });
       }
       return;
     }
 
-    addLog('info', `🔍 处理评论: commentId=${commentId}, userId=${uid}`);
+    addLog('debug', `🔍 处理评论: commentId=${commentId}, userId=${uid}`);
     const ip = await getIp(uid);
     if (ip) {
-      addLog('success', `🎉 查询注入: ${uid} → ${ip}`);
+      addLog('debug', `🎉 查询注入: ${uid} → ${ip}`);
       injectIntoComment(el, ip, { queriedAt: uids[uid]?.t, uid });
     } else {
       addLog('warn', `❌ 查询失败: ${uid} (ipLocation 为空)`);

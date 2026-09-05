@@ -58,10 +58,10 @@
         commentUserMap.set(String(comment.commentId), comment.userId);
       }
     }
-    addLog('info', `📋 ${list.length} 条评论，映射: ${commentUserMap.size}`);
+    addLog('debug', `📋 ${list.length} 条评论，映射: ${commentUserMap.size}`);
     if (!fieldLayoutLogged) {
       fieldLayoutLogged = true;
-      addLog('info', `📋 首条评论字段: ${Object.keys(list[0]).join(', ')}`);
+      addLog('debug', `📋 首条评论字段: ${Object.keys(list[0]).join(', ')}`);
     }
     observeComments();
   }

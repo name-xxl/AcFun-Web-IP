@@ -9,13 +9,15 @@
       userInfo: (uid) => `https://www.acfun.cn/rest/pc-direct/user/userInfo?userId=${uid}`,
     },
     COMMENT_URL_PATTERNS: ['/comment/list', '/comment/sublist', '/comment/subComment', '/comment/reply'],
+    // 通用选择器（两种模式共用）
+    PROFILE_LINK: 'a[href*="/u/"]',
+    // 默认模式选择器
     SELECTORS: {
       commentRoot: '[data-commentid]',
       commentFrom: '.area-comment-from',
       commentSkipSelf: '.area-sec-seemore',
       commentSkipParent: '.area-sec-more',
       userAttrLink: 'a[data-userid]',
-      profileLink: 'a[href*="/u/"]',
       avatar: 'img.avatar',
       avatarUidPattern: /newUpload\/(\d+)_/,
       feedTime: '.feed-time',
@@ -24,6 +26,14 @@
       upLink: 'a[href*="/u/"], a[href*="/live/"]',
       profileInfo: '#ac-space-info[data-uid]',
       profileTop: '.top',
+    },
+    // 盖楼模式选择器
+    SELECTORS_FLOOR: {
+      commentRoot: '.main-comment-item, .fc-comment-item',
+      commentFrom: '.comment-item-footer-left',
+      userAttrLink: 'a.name[data-uid]',
+      avatar: 'img.fc-avatar',
+      avatarUidPattern: /\/u\/(\d+)/,
     },
     OBSERVER: {
       rootMargin: '200px',   // 提前 200px 开始加载
