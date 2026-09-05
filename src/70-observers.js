@@ -82,7 +82,7 @@
 
   function injectUpIp() {
     for (const timeEl of document.querySelectorAll(CONFIG.SELECTORS.feedTime)) {
-      if (timeEl.parentNode.querySelector('.acr-up-ip')) continue;
+      if (timeEl.parentNode.querySelector('.acr-ip')) continue;
       if (processedFeedItems.has(timeEl)) continue;
 
       const wrap = timeEl.closest(CONFIG.SELECTORS.feedUpInfo)?.closest(CONFIG.SELECTORS.feedUp);
@@ -92,7 +92,7 @@
       processedFeedItems.add(timeEl);
 
       getIp(uid).then(ip => {
-        if (!ip || timeEl.parentNode.querySelector('.acr-up-ip')) return;
+        if (!ip || timeEl.parentNode.querySelector('.acr-ip')) return;
         timeEl.appendChild(makeIpSpan(ip, { queriedAt: uids[uid]?.t, uid }));
         addLog('success', `[UP] ${uid} → ${ip}`);
       });
@@ -145,13 +145,18 @@
   }
 
   let lastUrl = '';
+  let lastPath = '';
 
   function checkUrl() {
     if (location.href === lastUrl) return;
     lastUrl = location.href;
-    // 旧页面的映射对新页面无效且会无限累积，路由切换时清空重新收集
-    commentUserMap.clear();
-    fieldLayoutLogged = false;
+    // 路径没变（同页面 replaceState 改写查询参数）不算换页，映射保留；
+    // 路径变了才清空，旧页面的映射对新页面无效且会无限累积
+    if (location.pathname !== lastPath) {
+      lastPath = location.pathname;
+      commentUserMap.clear();
+      fieldLayoutLogged = false;
+    }
     loadPage();
     addLog('info', `🔄 ${lastUrl}`);
     setTimeout(onDomChange, CONFIG.OBSERVER.urlChangeDelayMs);

@@ -117,6 +117,7 @@
     switchLabel.textContent = '缓存';
     const toggle = document.createElement('span');
     toggle.className = 'acr-switch' + (enabled ? ' on' : '');
+    toggle.title = '关闭缓存会同时清空已有的缓存数据';
     toggle.addEventListener('click', () => {
       setEnabled(!enabled);
       toggle.classList.toggle('on', enabled);

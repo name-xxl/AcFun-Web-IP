@@ -11,7 +11,7 @@
     writeStorage(CONFIG.CACHE.enabledKey, enabled);
     if (!enabled) clearAllCache();
     persist();
-    showToast(enabled ? '缓存已开启' : '缓存已关闭');
+    showToast(enabled ? '缓存已开启' : '缓存已关闭，已清空全部缓存');
   }
 
   function describeDays() {
@@ -73,12 +73,12 @@
       const bundled = data && typeof data === 'object' && (data.pages || data.uids);
       let pageCount = 0;
       for (const [key, entry] of Object.entries(bundled ? (data.pages || {}) : data)) {
-        if (entry?.d && !cache[key]) { cache[key] = entry; pageCount++; }
+        if (isSafeKey(key) && entry?.d && !cache[key]) { cache[key] = entry; pageCount++; }
       }
       let uidCount = 0;
       if (bundled) {
         for (const [uid, entry] of Object.entries(data.uids || {})) {
-          if (entry && !uids[uid]) { uids[uid] = entry; uidCount++; }
+          if (isSafeKey(uid) && entry && !uids[uid]) { uids[uid] = entry; uidCount++; }
         }
       }
       persist();

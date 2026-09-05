@@ -16,3 +16,9 @@
     if (level === 'debug' && !DEBUG) return;
     log(LOG_ICONS[level] || LOG_ICONS.info, ...args);
   }
+
+  // 导入数据的键可能来自外部 JSON/文本：__proto__ 这类键走原型链 setter，
+  // 赋值不会写入自身属性，静默丢失，必须跳过
+  function isSafeKey(key) {
+    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+  }

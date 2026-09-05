@@ -138,7 +138,7 @@
     let added = 0;
     let skipped = 0;
     for (const [code, name] of Object.entries(entries)) {
-      if (!code || !name) continue;
+      if (!code || !name || !isSafeKey(code)) continue;
       if (deviceDB[code] && skipExisting) { skipped++; continue; }
       deviceDB[code] = name;
       added++;

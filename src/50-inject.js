@@ -42,6 +42,7 @@
     span.className = 'acr-ip';
     span.textContent = text ?? ` ${ip}`;
     span.style.cssText = 'margin-left:3px;cursor:pointer;transition:color .2s;';
+    if (style) span.style.cssText += style;
     span.title = `IP属地：${ip}\n（基于用户主页实时资料，不代表发布时的IP）`;
     if (queriedAt) span.title += `\n查询于：${new Date(queriedAt).toLocaleString()}`;
     if (uid) span.dataset.acrUid = String(uid);

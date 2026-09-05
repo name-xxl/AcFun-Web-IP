@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AcFunReveal - A站网页版显示 IP 属地
 // @namespace    http://acfun-reveal.local
-// @version      5.8.0
+// @version      5.8.1
 // @description  显示评论 IP 属地（可视区域优先），并将设备型号代号替换为友好名称
 // @author       name_xxl
 // @match        https://www.acfun.cn/*
@@ -20,7 +20,7 @@
   //  常量与配置：API 端点、DOM 选择器、各类阈值统一收拢于此
   //  A 站改版时只需调整本区块
   // ============================================================
-  const VERSION = '5.8.0';
+  const VERSION = '5.8.1';
 
   const CONFIG = {
     API: {
@@ -102,6 +102,12 @@
     // debug 级别只在调试模式下输出
     if (level === 'debug' && !DEBUG) return;
     log(LOG_ICONS[level] || LOG_ICONS.info, ...args);
+  }
+
+  // 导入数据的键可能来自外部 JSON/文本：__proto__ 这类键走原型链 setter，
+  // 赋值不会写入自身属性，静默丢失，必须跳过
+  function isSafeKey(key) {
+    return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
   }
   // ============================================================
   //  存储：启用开关、TTL、页面级缓存、全局 uid 缓存
@@ -346,6 +352,7 @@
     span.className = 'acr-ip';
     span.textContent = text ?? ` ${ip}`;
     span.style.cssText = 'margin-left:3px;cursor:pointer;transition:color .2s;';
+    if (style) span.style.cssText += style;
     span.title = `IP属地：${ip}\n（基于用户主页实时资料，不代表发布时的IP）`;
     if (queriedAt) span.title += `\n查询于：${new Date(queriedAt).toLocaleString()}`;
     if (uid) span.dataset.acrUid = String(uid);
@@ -1530,7 +1537,7 @@ const DEVICE_BUILTIN = {
     let added = 0;
     let skipped = 0;
     for (const [code, name] of Object.entries(entries)) {
-      if (!code || !name) continue;
+      if (!code || !name || !isSafeKey(code)) continue;
       if (deviceDB[code] && skipExisting) { skipped++; continue; }
       deviceDB[code] = name;
       added++;
@@ -1857,7 +1864,7 @@ const DEVICE_BUILTIN = {
 
   function injectUpIp() {
     for (const timeEl of document.querySelectorAll(CONFIG.SELECTORS.feedTime)) {
-      if (timeEl.parentNode.querySelector('.acr-up-ip')) continue;
+      if (timeEl.parentNode.querySelector('.acr-ip')) continue;
       if (processedFeedItems.has(timeEl)) continue;
 
       const wrap = timeEl.closest(CONFIG.SELECTORS.feedUpInfo)?.closest(CONFIG.SELECTORS.feedUp);
@@ -1867,7 +1874,7 @@ const DEVICE_BUILTIN = {
       processedFeedItems.add(timeEl);
 
       getIp(uid).then(ip => {
-        if (!ip || timeEl.parentNode.querySelector('.acr-up-ip')) return;
+        if (!ip || timeEl.parentNode.querySelector('.acr-ip')) return;
         timeEl.appendChild(makeIpSpan(ip, { queriedAt: uids[uid]?.t, uid }));
         addLog('success', `[UP] ${uid} → ${ip}`);
       });
@@ -1920,13 +1927,18 @@ const DEVICE_BUILTIN = {
   }
 
   let lastUrl = '';
+  let lastPath = '';
 
   function checkUrl() {
     if (location.href === lastUrl) return;
     lastUrl = location.href;
-    // 旧页面的映射对新页面无效且会无限累积，路由切换时清空重新收集
-    commentUserMap.clear();
-    fieldLayoutLogged = false;
+    // 路径没变（同页面 replaceState 改写查询参数）不算换页，映射保留；
+    // 路径变了才清空，旧页面的映射对新页面无效且会无限累积
+    if (location.pathname !== lastPath) {
+      lastPath = location.pathname;
+      commentUserMap.clear();
+      fieldLayoutLogged = false;
+    }
     loadPage();
     addLog('info', `🔄 ${lastUrl}`);
     setTimeout(onDomChange, CONFIG.OBSERVER.urlChangeDelayMs);
@@ -2062,6 +2074,7 @@ const DEVICE_BUILTIN = {
     switchLabel.textContent = '缓存';
     const toggle = document.createElement('span');
     toggle.className = 'acr-switch' + (enabled ? ' on' : '');
+    toggle.title = '关闭缓存会同时清空已有的缓存数据';
     toggle.addEventListener('click', () => {
       setEnabled(!enabled);
       toggle.classList.toggle('on', enabled);
@@ -2142,7 +2155,7 @@ const DEVICE_BUILTIN = {
     writeStorage(CONFIG.CACHE.enabledKey, enabled);
     if (!enabled) clearAllCache();
     persist();
-    showToast(enabled ? '缓存已开启' : '缓存已关闭');
+    showToast(enabled ? '缓存已开启' : '缓存已关闭，已清空全部缓存');
   }
 
   function describeDays() {
@@ -2204,12 +2217,12 @@ const DEVICE_BUILTIN = {
       const bundled = data && typeof data === 'object' && (data.pages || data.uids);
       let pageCount = 0;
       for (const [key, entry] of Object.entries(bundled ? (data.pages || {}) : data)) {
-        if (entry?.d && !cache[key]) { cache[key] = entry; pageCount++; }
+        if (isSafeKey(key) && entry?.d && !cache[key]) { cache[key] = entry; pageCount++; }
       }
       let uidCount = 0;
       if (bundled) {
         for (const [uid, entry] of Object.entries(data.uids || {})) {
-          if (entry && !uids[uid]) { uids[uid] = entry; uidCount++; }
+          if (isSafeKey(uid) && entry && !uids[uid]) { uids[uid] = entry; uidCount++; }
         }
       }
       persist();

@@ -34,6 +34,13 @@ for (const f of FILES) {
     out += fs.readFileSync(p, 'utf8');
 }
 
+// 孤儿文件检测：src/ 下未登记到 FILES 的文件会被拼接静默遗漏，直接报错
+const orphans = fs.readdirSync(SRC_DIR).filter(f => f.endsWith('.js') && !FILES.includes(f));
+if (orphans.length) {
+    console.error('src/ 下有未登记的文件（会被拼接遗漏）: ' + orphans.join(', ') + '，请加入 FILES');
+    process.exit(1);
+}
+
 // 版本一致性校验：@version（Tampermonkey 识别）必须与 package.json 一致，
 // 防止发版时只改一处
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
