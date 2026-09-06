@@ -41,19 +41,21 @@ if (orphans.length) {
     process.exit(1);
 }
 
-// 版本一致性校验：@version（Tampermonkey 识别）必须与 package.json 一致，
-// 防止发版时只改一处
+// 版本号单一来源：package.json。src 里的 __VERSION__ 占位符在此统一注入，
+// 下面的校验改为验证注入结果，发版只需改 package.json 一处
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+out = out.replaceAll('__VERSION__', pkg.version);
+
+// 注入校验：@version（Tampermonkey 识别）与 VERSION 常量（运行时日志/导出用）
+// 必须等于 package.json，防止占位符被删改或注入遗漏
 const vm = out.match(/@version\s+([^\s]+)/);
 if (!vm || vm[1] !== pkg.version) {
-    console.error(`版本不一致：header @version=${vm ? vm[1] : '(未找到)'} vs package.json=${pkg.version}，请同步后再构建`);
+    console.error(`版本不一致：header @version=${vm ? vm[1] : '(未找到)'} vs package.json=${pkg.version}，请检查 __VERSION__ 占位符`);
     process.exit(1);
 }
-
-// 常量一致性校验：10-constants.js 里的 VERSION（运行时日志/导出用）也要同步
 const vc = out.match(/const VERSION = '([^']+)'/);
 if (!vc || vc[1] !== pkg.version) {
-    console.error(`版本不一致：src VERSION=${vc ? vc[1] : '(未找到)'} vs package.json=${pkg.version}，请同步后再构建`);
+    console.error(`版本不一致：src VERSION=${vc ? vc[1] : '(未找到)'} vs package.json=${pkg.version}，请检查 __VERSION__ 占位符`);
     process.exit(1);
 }
 

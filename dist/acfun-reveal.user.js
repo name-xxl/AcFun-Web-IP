@@ -1,7 +1,9 @@
 // ==UserScript==
 // @name         AcFunReveal - A站网页版显示 IP 属地
 // @namespace    http://acfun-reveal.local
-// @version      5.8.2
+// @version      5.8.3
+// @updateURL    https://raw.githubusercontent.com/name-xxl/AcFun-Web-IP/main/dist/acfun-reveal.user.js
+// @downloadURL  https://raw.githubusercontent.com/name-xxl/AcFun-Web-IP/main/dist/acfun-reveal.user.js
 // @description  显示评论 IP 属地（可视区域优先），并将设备型号代号替换为友好名称
 // @author       name_xxl
 // @match        https://www.acfun.cn/*
@@ -20,7 +22,7 @@
   //  常量与配置：API 端点、DOM 选择器、各类阈值统一收拢于此
   //  A 站改版时只需调整本区块
   // ============================================================
-  const VERSION = '5.8.2';
+  const VERSION = '5.8.3';
 
   const CONFIG = {
     API: {

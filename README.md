@@ -21,7 +21,7 @@
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)
-2. 新建脚本，粘贴 `dist/acfun-reveal.user.js` 内容
+2. 打开[安装链接](https://raw.githubusercontent.com/name-xxl/AcFun-Web-IP/main/dist/acfun-reveal.user.js)，在 Tampermonkey 安装页确认（推荐，后续可自动更新）；或新建脚本粘贴 `dist/acfun-reveal.user.js` 内容（无自动更新）
 3. 保存，登录 A 站后打开页面即可
 
 > 属地字段需要登录态，未登录时 API 返回空 `ipLocation`。
@@ -55,7 +55,7 @@ node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面�
 node tools/gen-device-data.js <MobileModels 数据目录>  # 重新生成内置设备型号表
 ```
 
-版本号需同步三处：`package.json`、`src/00-header.js` 的 `@version`、`src/10-constants.js` 的 `VERSION`，build.js 会校验，不一致直接报错。
+版本号单一来源为 `package.json`：src 里的 `@version` 与 `VERSION` 常量写 `__VERSION__` 占位符，build.js 构建时统一注入并校验结果，发版只需改 package.json 一处。
 
 ## 设置面板
 
