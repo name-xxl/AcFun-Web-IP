@@ -32,6 +32,16 @@
     if (newlyObserved) addLog('debug', `👁️ 新增观察: ${newlyObserved} 个`);
   }
 
+  // 重开缓存后调用：清掉未注入评论的"已观察"标记并重扫。
+  // 禁用期间进入过视口的元素已被 unobserve 且无缓存可补，不清标记的话重新开启后永远不再处理
+  function resetObservedComments() {
+    const selector = `${CONFIG.SELECTORS.commentRoot}, ${CONFIG.SELECTORS_FLOOR.commentRoot}`;
+    for (const el of document.querySelectorAll(selector)) {
+      if (!el.querySelector('.acr-ip')) delete el._acrObserved;
+    }
+    observeComments();
+  }
+
   function isSkippableComment(el) {
     // 默认模式的跳过逻辑
     const skipSelfClass = CONFIG.SELECTORS.commentSkipSelf.slice(1); // 去掉开头的 '.'
@@ -46,7 +56,7 @@
   }
 
   async function processVisibleComment(el) {
-    if (el.querySelector('.acr-ip') || isSkippableComment(el)) return;
+    if (!enabled || el.querySelector('.acr-ip') || isSkippableComment(el)) return;
 
     // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
     const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
@@ -81,6 +91,7 @@
   const processedFeedItems = new WeakSet();
 
   function injectUpIp() {
+    if (!enabled) return;
     for (const timeEl of document.querySelectorAll(CONFIG.SELECTORS.feedTime)) {
       if (timeEl.parentNode.querySelector('.acr-ip')) continue;
       if (processedFeedItems.has(timeEl)) continue;
@@ -103,6 +114,7 @@
   //  场景二：用户主页 IP
   // ============================================================
   function injectProfileIp() {
+    if (!enabled) return;
     const info = document.querySelector(CONFIG.SELECTORS.profileInfo);
     if (!info || info.querySelector('.acr-ip')) return;
     const uid = info.getAttribute('data-uid');

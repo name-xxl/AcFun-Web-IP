@@ -73,6 +73,7 @@
 
   // 节点被 A 站原地重渲染后不会再次进入 IntersectionObserver，从缓存直接补注入
   function injectFromCache(el) {
+    if (!enabled) return;
     // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
     const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
     if (!commentId) return;

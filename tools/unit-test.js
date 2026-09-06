@@ -131,7 +131,11 @@ function queryAll(root, sel) {
 }
 
 class FakeDocument {
-  constructor() { this.body = new FakeElement('body'); }
+  constructor() {
+    this.body = new FakeElement('body');
+    this.head = new FakeElement('head');
+  }
+  getElementById() { return null; }
   querySelector(sel) { return queryOne(this.body, sel); }
   querySelectorAll(sel) { return queryAll(this.body, sel); }
   createElement(tag) { return new FakeElement(tag); }
@@ -243,6 +247,8 @@ assert('无 failedAt 不算', Boolean(api.isFailureCacheFresh({ ip: null })), fa
 assert('刚失败算新鲜', Boolean(api.isFailureCacheFresh({ failedAt: now })), true);
 assert('超过 TTL 不算', Boolean(api.isFailureCacheFresh({ failedAt: now - 7 * 3600 * 1000 })), false);
 assert('边界：刚好在 TTL 内', Boolean(api.isFailureCacheFresh({ failedAt: now - 5 * 3600 * 1000 })), true);
+assert('瞬时错误：5 分钟内算新鲜', Boolean(api.isFailureCacheFresh({ failedAt: now - 5 * 60 * 1000, transient: true })), true);
+assert('瞬时错误：11 分钟外不算', Boolean(api.isFailureCacheFresh({ failedAt: now - 11 * 60 * 1000, transient: true })), false);
 assert('null 输入', Boolean(api.isFailureCacheFresh(null)), false);
 assert('undefined 输入', Boolean(api.isFailureCacheFresh(undefined)), false);
 

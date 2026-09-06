@@ -218,19 +218,6 @@
     if (replaced) addLog('debug', `📱 设备型号替换 ${replaced} 个`);
   }
 
-  // 清除替换与手动切换标记，全部按当前文本重新匹配
-  function forceReprocessDevices() {
-    document.querySelectorAll(`[${CONFIG.DEVICE.processedAttr}], [${CONFIG.DEVICE.manualAttr}]`).forEach(el => {
-      el.removeAttribute(CONFIG.DEVICE.processedAttr);
-      el.removeAttribute(CONFIG.DEVICE.manualAttr);
-      delete el.dataset.friendly;
-      delete el.dataset.original;
-    });
-    deviceSearchCache.clear();
-    processDeviceModels();
-    showToast('设备型号已重新处理');
-  }
-
   // ============================================================
   //  面板：设备型号区块（开关 + 数据管理 + 导入视图）
   // ============================================================
@@ -290,7 +277,7 @@
         <button class="acr-device-confirm" style="border:none;background:#fd4c5d;color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
       </div>`;
 
-    body.querySelector('.acr-device-cancel').addEventListener('click', () => openPanel());
+    body.querySelector('.acr-device-cancel').addEventListener('click', () => openPanel(currentPanelUid));
     body.querySelector('.acr-device-confirm').addEventListener('click', async () => {
       const entries = {};
       for (const file of body.querySelector('.acr-device-file').files) {

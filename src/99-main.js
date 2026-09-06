@@ -8,6 +8,7 @@
 
   pruneExpiredPages();
   save();
+  ensureIpStyle();
   loadPage();
   loadDeviceDB();
   processDeviceModels();
@@ -18,6 +19,7 @@
   registerMenus();
   setTimeout(onDomChange, CONFIG.OBSERVER.urlChangeDelayMs);
   setTimeout(checkUrl, 100);
+  window.addEventListener('pagehide', () => { savePage(); saveUids(); });
 
   // 暴露纯函数与内部状态，供控制台调试和单元测试使用
   window.ACFunReveal = {

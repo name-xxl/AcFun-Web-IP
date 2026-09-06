@@ -50,7 +50,7 @@ for (const fn of [
   'parseDeviceModelsText', 'processDeviceModels',
   'buildDeviceRows', 'openDeviceImport',
   'hookFetch', 'hookXHR', 'extractCommentList',// intercept
-  'observeComments', 'processVisibleComment',  // observers
+  'observeComments', 'processVisibleComment', 'resetObservedComments', // observers
   'openPanel', 'ensurePanelStyle',             // panel
   'exportCache', 'importCache',                // cache actions
   'registerMenus',                             // menu
@@ -59,6 +59,8 @@ for (const fn of [
 }
 
 // 5. 行为要点未被回归
+check('fetch 拦截 await 原始响应（clone 可用）', src.includes('await originalFetch.apply'));
+check('processVisibleComment 缓存开关守卫', src.includes('if (!enabled || el.querySelector'));
 check('fetch 使用 credentials:include（登录态）', src.includes("credentials: 'include'"));
 check('串行限流配置存在', src.includes('minIntervalMs'));
 check('全局 uid 缓存 key', src.includes('acr_uids'));

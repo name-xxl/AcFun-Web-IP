@@ -1,6 +1,8 @@
   // ============================================================
   //  缓存操作（面板与菜单共用）—— 静默操作，无 alert/confirm/prompt/reload
   // ============================================================
+  let currentPanelUid = null;
+
   function persist() {
     save();
     saveUids();
@@ -9,7 +11,8 @@
   function setEnabled(next) {
     enabled = next;
     writeStorage(CONFIG.CACHE.enabledKey, enabled);
-    if (!enabled) clearAllCache();
+    if (!next) clearAllCache();
+    else resetObservedComments();
     persist();
     showToast(enabled ? '缓存已开启' : '缓存已关闭，已清空全部缓存');
   }
@@ -64,7 +67,7 @@
         <button class="acr-import-cancel" style="border:1px solid #999;background:#f4f4f4;color:#666;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">取消</button>
         <button class="acr-import-confirm" style="border:none;background:#fd4c5d;color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
       </div>`;
-    body.querySelector('.acr-import-cancel').addEventListener('click', () => openPanel());
+    body.querySelector('.acr-import-cancel').addEventListener('click', () => openPanel(currentPanelUid));
     body.querySelector('.acr-import-confirm').addEventListener('click', () => {
       const input = body.querySelector('.acr-import-input').value.trim();
       if (!input) { showToast('请输入 JSON'); return; }
@@ -109,16 +112,7 @@
       container.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483647;display:flex;flex-direction:column;gap:6px;pointer-events:none';
       document.body.appendChild(container);
     }
-    if (!document.getElementById('acr-toast-style')) {
-      const style = document.createElement('style');
-      style.id = 'acr-toast-style';
-      style.textContent = `
-        .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
-        .acr-toast.out{opacity:0;transition:opacity .3s}
-        @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-      `;
-      document.head.appendChild(style);
-    }
+    ensurePanelStyle();
     const toast = document.createElement('div');
     toast.className = 'acr-toast';
     toast.textContent = message;

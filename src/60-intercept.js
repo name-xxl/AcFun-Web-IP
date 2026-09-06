@@ -8,7 +8,8 @@
   function hookFetch() {
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
-      const response = originalFetch.apply(this, args);
+      // 必须 await 拿到 Response 再 clone：clone 直接调在 Promise 上会抛 TypeError，拦截静默失效
+      const response = await originalFetch.apply(this, args);
       try {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         if (isCommentUrl(url)) {
@@ -49,10 +50,7 @@
   }
 
   function onComments(list) {
-    if (!list.length) {
-      addLog('warn', '📋 评论列表为空');
-      return;
-    }
+    if (!list.length) return;
     for (const comment of list) {
       if (comment.commentId && comment.userId) {
         commentUserMap.set(String(comment.commentId), comment.userId);

@@ -31,7 +31,11 @@
   }
 
   function isFailureCacheFresh(entry) {
-    return entry?.failedAt && Date.now() - entry.failedAt < CONFIG.CACHE.failedTtlMs;
+    if (!entry?.failedAt) return false;
+    const ttl = entry.transient
+      ? CONFIG.CACHE.transientFailedTtlMs
+      : CONFIG.CACHE.failedTtlMs;
+    return Date.now() - entry.failedAt < ttl;
   }
 
   function pruneExpiredPages() {
@@ -62,7 +66,7 @@
     const uidTtlMs = CONFIG.CACHE.uidTtlDays * 864e5;
     for (const [uid, entry] of Object.entries(uids)) {
       const positiveExpired = entry.ip && entry.t && now - entry.t > uidTtlMs;
-      const negativeExpired = !entry.ip && entry.failedAt && now - entry.failedAt > CONFIG.CACHE.failedTtlMs;
+      const negativeExpired = !entry.ip && entry.failedAt && now - entry.failedAt > (entry.transient ? CONFIG.CACHE.transientFailedTtlMs : CONFIG.CACHE.failedTtlMs);
       if (positiveExpired || negativeExpired) delete uids[uid];
     }
     const keys = Object.keys(uids);

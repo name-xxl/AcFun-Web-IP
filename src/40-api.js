@@ -14,7 +14,15 @@
     return result;
   }
 
+  // 防抖存储写入：连续查询时合并为一次序列化，避免 200ms 间隔下反复全量 JSON.stringify
+  let saveTimer = null;
+  function scheduleSave() {
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => { saveTimer = null; savePage(); saveUids(); }, 2000);
+  }
+
   async function getIp(uid) {
+    if (!enabled) return null;
     const fresh = getFreshUidInfo(uid);
     if (fresh) return fresh.ip;
     if (pendingIpQueries.has(uid)) return pendingIpQueries.get(uid);
@@ -29,6 +37,7 @@
   // ipLocation 字段需要请求方登录态，游客一律返回空字符串。
   // 用页面上下文 fetch（同源自动携带全部 cookie，含 HttpOnly），不依赖脚本管理器的 cookie 行为
   function applyUserInfo(uid, data) {
+    if (!enabled) return data.profile?.ipLocation || null;
     const ip = data.profile?.ipLocation || null;
     addLog('debug', `📡 API响应: userId=${uid}, ipLocation="${data.profile?.ipLocation || ''}", result=${data.result}`);
     const now = Date.now();
@@ -40,8 +49,7 @@
       uids[uid] = { ip: null, failedAt: now };
       if (pageId) pageData[uid] = { ip: null, failedAt: now };
     }
-    if (pageId) savePage();
-    saveUids();
+    scheduleSave();
     return ip;
   }
 
@@ -50,6 +58,10 @@
       return applyUserInfo(uid, await fetchUserInfoViaPage(uid));
     } catch (e) {
       addLog('error', `📡 请求失败: userId=${uid}`, e.message);
+      const now = Date.now();
+      uids[uid] = { ip: null, failedAt: now, transient: true };
+      if (pageId) pageData[uid] = { ip: null, failedAt: now, transient: true };
+      scheduleSave();
       return null;
     }
   }

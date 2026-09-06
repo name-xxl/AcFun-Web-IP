@@ -50,7 +50,7 @@ src/
 
 ```bash
 node build.js            # 拼接 src/ -> dist/acfun-reveal.user.js（含版本一致性校验）
-node tools/unit-test.js  # 单元测试：纯函数输入输出（46 项）
+node tools/unit-test.js  # 单元测试：纯函数输入输出（48 项）
 node tools/smoke-test.js # 冒烟测试：语法、版本、关键函数、面板样式
 node tools/gen-device-data.js <MobileModels 数据目录>  # 重新生成内置设备型号表
 ```
@@ -89,7 +89,7 @@ A 站评论设备标签显示的是厂商内部代号（如 `RMX3619`、`iPhone3
 - 网页版评论 API 不含 IP 字段；属地来自用户资料 API 的 `profile.ipLocation`（当前属地，非评论时属地）
 - `ipLocation` 需要请求方登录态：使用页面上下文 `fetch`（`credentials: 'include'`，自动携带含 HttpOnly 的完整 cookie）
 - 全局 uid 缓存 TTL 1 天（用户搬家后次日刷新），页面缓存按 ac 号、默认永久
-- 查询失败（无属地）写入 6 小时负缓存，避免反复请求
+- 查询失败分级负缓存：API 正常但无属地 6 小时；网络错误（超时/断网/风控）10 分钟，避免瞬时故障把用户 IP 隐藏半天
 
 ## 局限性
 
@@ -98,6 +98,18 @@ A 站评论设备标签显示的是厂商内部代号（如 `RMX3619`、`iPhone3
 - 移动端 `m.acfun.cn` 已匹配但 DOM 选择器为 PC 端，暂未生效
 
 ## 版本历史
+
+### v5.8.4 — 拦截失效修复 + 缓存开关生效 + 负缓存分级
+
+- 修复 fetch 拦截静默失效：`response.clone()` 调在 Promise 上抛 TypeError，补 `await` 后 fetch 路径的 commentId→userId 映射恢复建立（此前实际只有 XHR 路径生效）
+- 修复首次悬浮 IP 标签不变色：hover 规则原来只在点开设置面板后才注入，现在脚本启动即注入
+- 缓存开关真正生效：关闭后不再发起查询、不再写入任何缓存（此前关闭只清一次数据，uid 缓存照样查询并持久化）；重新开启时自动重扫已浏览未注入的评论
+- 修复 Escape 关面板失效：监听改为常驻并检查面板存在，不再被面板打开后的任意首次按键消费
+- 负缓存分级：网络错误 10 分钟、无属地 6 小时，读侧新鲜度判断与写侧过期清理一致
+- 存储写入防抖：连续查询合并为 2 秒一次，避免每条响应全量序列化两次
+- 导入视图点「取消」恢复进入面板时的用户资料卡片
+- 清理：删除未使用的 `forceReprocessDevices`、toast 样式去重、空评论列表不再刷 warn 日志
+- 测试：单测 48 项（新增瞬时负缓存用例，DOM mock 补 `head`/`getElementById`）；冒烟测试新增 fetch await 与开关守卫回归护栏
 
 ### v5.8.1 — 修复与加固
 

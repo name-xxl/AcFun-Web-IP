@@ -53,6 +53,7 @@
       maxUids: 5000,   // 全局 uid 缓存上限
       uidTtlDays: 1,   // 全局属地缓存保鲜期：过期重查，兼顾 IP 变动的及时性与请求量
       failedTtlMs: 6 * 60 * 60 * 1000,  // 查询失败（无属地）的负缓存时长
+      transientFailedTtlMs: 10 * 60 * 1000, // 网络错误（超时/断网/风控）的短负缓存，区别于"确认无属地"
       logLimit: 500,
     },
     PAGE_ID_PATTERN: /\/[av]\/(ac?\d+)/i,

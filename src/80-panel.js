@@ -4,6 +4,16 @@
   // ============================================================
   const ACR_Z_INDEX = 2147483000;
 
+  // IP 标签的悬浮变色规则与设置面板无关，脚本启动时就注入，
+  // 否则首次悬浮不变色，要点开一次面板后规则才存在
+  function ensureIpStyle() {
+    if (document.getElementById('acr-ip-style')) return;
+    const style = document.createElement('style');
+    style.id = 'acr-ip-style';
+    style.textContent = `.acr-ip:hover{color:#fd4c5d !important}`;
+    document.head.appendChild(style);
+  }
+
   function ensurePanelStyle() {
     if (document.getElementById('acr-panel-style')) return;
     const style = document.createElement('style');
@@ -39,7 +49,6 @@
       .acr-actions button.acr-danger{background:#fff;border-color:#f5222d;color:#f5222d}
       .acr-actions button.acr-danger:hover{background:#fff1f0}
       .acr-panel-foot{padding:10px 14px;font-size:11px;color:#999;background:#fafafa;border-top:1px solid #f0f0f0}
-      .acr-ip:hover{color:#fd4c5d !important}
       .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
       .acr-toast.out{opacity:0;transition:opacity .3s}
       @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -71,6 +80,7 @@
   }
 
   function openPanel(uid) {
+    currentPanelUid = uid || null;
     ensurePanelStyle();
     closePanel();
 
@@ -172,10 +182,12 @@
     panel.append(head, body, foot);
     mask.appendChild(panel);
     document.body.appendChild(mask);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closePanel();
-    }, { once: true });
   }
+
+  // Escape 关闭面板：常驻监听，面板不存在时不操作
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.querySelector('.acr-mask')) closePanel();
+  });
 
   // 点击任意 IP 标签打开面板；捕获阶段拦截，避免触发 A 站自身的评论点击逻辑
   document.addEventListener('click', (e) => {

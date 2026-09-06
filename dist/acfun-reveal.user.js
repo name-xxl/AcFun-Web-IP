@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AcFunReveal - A站网页版显示 IP 属地
 // @namespace    http://acfun-reveal.local
-// @version      5.8.3
+// @version      5.8.4
 // @updateURL    https://raw.githubusercontent.com/name-xxl/AcFun-Web-IP/main/dist/acfun-reveal.user.js
 // @downloadURL  https://raw.githubusercontent.com/name-xxl/AcFun-Web-IP/main/dist/acfun-reveal.user.js
 // @description  显示评论 IP 属地（可视区域优先），并将设备型号代号替换为友好名称
@@ -22,7 +22,7 @@
   //  常量与配置：API 端点、DOM 选择器、各类阈值统一收拢于此
   //  A 站改版时只需调整本区块
   // ============================================================
-  const VERSION = '5.8.3';
+  const VERSION = '5.8.4';
 
   const CONFIG = {
     API: {
@@ -73,6 +73,7 @@
       maxUids: 5000,   // 全局 uid 缓存上限
       uidTtlDays: 1,   // 全局属地缓存保鲜期：过期重查，兼顾 IP 变动的及时性与请求量
       failedTtlMs: 6 * 60 * 60 * 1000,  // 查询失败（无属地）的负缓存时长
+      transientFailedTtlMs: 10 * 60 * 1000, // 网络错误（超时/断网/风控）的短负缓存，区别于"确认无属地"
       logLimit: 500,
     },
     PAGE_ID_PATTERN: /\/[av]\/(ac?\d+)/i,
@@ -144,7 +145,11 @@
   }
 
   function isFailureCacheFresh(entry) {
-    return entry?.failedAt && Date.now() - entry.failedAt < CONFIG.CACHE.failedTtlMs;
+    if (!entry?.failedAt) return false;
+    const ttl = entry.transient
+      ? CONFIG.CACHE.transientFailedTtlMs
+      : CONFIG.CACHE.failedTtlMs;
+    return Date.now() - entry.failedAt < ttl;
   }
 
   function pruneExpiredPages() {
@@ -175,7 +180,7 @@
     const uidTtlMs = CONFIG.CACHE.uidTtlDays * 864e5;
     for (const [uid, entry] of Object.entries(uids)) {
       const positiveExpired = entry.ip && entry.t && now - entry.t > uidTtlMs;
-      const negativeExpired = !entry.ip && entry.failedAt && now - entry.failedAt > CONFIG.CACHE.failedTtlMs;
+      const negativeExpired = !entry.ip && entry.failedAt && now - entry.failedAt > (entry.transient ? CONFIG.CACHE.transientFailedTtlMs : CONFIG.CACHE.failedTtlMs);
       if (positiveExpired || negativeExpired) delete uids[uid];
     }
     const keys = Object.keys(uids);
@@ -255,7 +260,15 @@
     return result;
   }
 
+  // 防抖存储写入：连续查询时合并为一次序列化，避免 200ms 间隔下反复全量 JSON.stringify
+  let saveTimer = null;
+  function scheduleSave() {
+    if (saveTimer) return;
+    saveTimer = setTimeout(() => { saveTimer = null; savePage(); saveUids(); }, 2000);
+  }
+
   async function getIp(uid) {
+    if (!enabled) return null;
     const fresh = getFreshUidInfo(uid);
     if (fresh) return fresh.ip;
     if (pendingIpQueries.has(uid)) return pendingIpQueries.get(uid);
@@ -270,6 +283,7 @@
   // ipLocation 字段需要请求方登录态，游客一律返回空字符串。
   // 用页面上下文 fetch（同源自动携带全部 cookie，含 HttpOnly），不依赖脚本管理器的 cookie 行为
   function applyUserInfo(uid, data) {
+    if (!enabled) return data.profile?.ipLocation || null;
     const ip = data.profile?.ipLocation || null;
     addLog('debug', `📡 API响应: userId=${uid}, ipLocation="${data.profile?.ipLocation || ''}", result=${data.result}`);
     const now = Date.now();
@@ -281,8 +295,7 @@
       uids[uid] = { ip: null, failedAt: now };
       if (pageId) pageData[uid] = { ip: null, failedAt: now };
     }
-    if (pageId) savePage();
-    saveUids();
+    scheduleSave();
     return ip;
   }
 
@@ -291,6 +304,10 @@
       return applyUserInfo(uid, await fetchUserInfoViaPage(uid));
     } catch (e) {
       addLog('error', `📡 请求失败: userId=${uid}`, e.message);
+      const now = Date.now();
+      uids[uid] = { ip: null, failedAt: now, transient: true };
+      if (pageId) pageData[uid] = { ip: null, failedAt: now, transient: true };
+      scheduleSave();
       return null;
     }
   }
@@ -385,6 +402,7 @@
 
   // 节点被 A 站原地重渲染后不会再次进入 IntersectionObserver，从缓存直接补注入
   function injectFromCache(el) {
+    if (!enabled) return;
     // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
     const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
     if (!commentId) return;
@@ -1619,19 +1637,6 @@ const DEVICE_BUILTIN = {
     if (replaced) addLog('debug', `📱 设备型号替换 ${replaced} 个`);
   }
 
-  // 清除替换与手动切换标记，全部按当前文本重新匹配
-  function forceReprocessDevices() {
-    document.querySelectorAll(`[${CONFIG.DEVICE.processedAttr}], [${CONFIG.DEVICE.manualAttr}]`).forEach(el => {
-      el.removeAttribute(CONFIG.DEVICE.processedAttr);
-      el.removeAttribute(CONFIG.DEVICE.manualAttr);
-      delete el.dataset.friendly;
-      delete el.dataset.original;
-    });
-    deviceSearchCache.clear();
-    processDeviceModels();
-    showToast('设备型号已重新处理');
-  }
-
   // ============================================================
   //  面板：设备型号区块（开关 + 数据管理 + 导入视图）
   // ============================================================
@@ -1691,7 +1696,7 @@ const DEVICE_BUILTIN = {
         <button class="acr-device-confirm" style="border:none;background:#fd4c5d;color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
       </div>`;
 
-    body.querySelector('.acr-device-cancel').addEventListener('click', () => openPanel());
+    body.querySelector('.acr-device-cancel').addEventListener('click', () => openPanel(currentPanelUid));
     body.querySelector('.acr-device-confirm').addEventListener('click', async () => {
       const entries = {};
       for (const file of body.querySelector('.acr-device-file').files) {
@@ -1725,7 +1730,8 @@ const DEVICE_BUILTIN = {
   function hookFetch() {
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
-      const response = originalFetch.apply(this, args);
+      // 必须 await 拿到 Response 再 clone：clone 直接调在 Promise 上会抛 TypeError，拦截静默失效
+      const response = await originalFetch.apply(this, args);
       try {
         const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
         if (isCommentUrl(url)) {
@@ -1766,10 +1772,7 @@ const DEVICE_BUILTIN = {
   }
 
   function onComments(list) {
-    if (!list.length) {
-      addLog('warn', '📋 评论列表为空');
-      return;
-    }
+    if (!list.length) return;
     for (const comment of list) {
       if (comment.commentId && comment.userId) {
         commentUserMap.set(String(comment.commentId), comment.userId);
@@ -1816,6 +1819,16 @@ const DEVICE_BUILTIN = {
     if (newlyObserved) addLog('debug', `👁️ 新增观察: ${newlyObserved} 个`);
   }
 
+  // 重开缓存后调用：清掉未注入评论的"已观察"标记并重扫。
+  // 禁用期间进入过视口的元素已被 unobserve 且无缓存可补，不清标记的话重新开启后永远不再处理
+  function resetObservedComments() {
+    const selector = `${CONFIG.SELECTORS.commentRoot}, ${CONFIG.SELECTORS_FLOOR.commentRoot}`;
+    for (const el of document.querySelectorAll(selector)) {
+      if (!el.querySelector('.acr-ip')) delete el._acrObserved;
+    }
+    observeComments();
+  }
+
   function isSkippableComment(el) {
     // 默认模式的跳过逻辑
     const skipSelfClass = CONFIG.SELECTORS.commentSkipSelf.slice(1); // 去掉开头的 '.'
@@ -1830,7 +1843,7 @@ const DEVICE_BUILTIN = {
   }
 
   async function processVisibleComment(el) {
-    if (el.querySelector('.acr-ip') || isSkippableComment(el)) return;
+    if (!enabled || el.querySelector('.acr-ip') || isSkippableComment(el)) return;
 
     // 支持两种模式：默认模式 data-commentid，盖楼模式 data-cid
     const commentId = el.getAttribute('data-commentid') || el.getAttribute('data-cid');
@@ -1865,6 +1878,7 @@ const DEVICE_BUILTIN = {
   const processedFeedItems = new WeakSet();
 
   function injectUpIp() {
+    if (!enabled) return;
     for (const timeEl of document.querySelectorAll(CONFIG.SELECTORS.feedTime)) {
       if (timeEl.parentNode.querySelector('.acr-ip')) continue;
       if (processedFeedItems.has(timeEl)) continue;
@@ -1887,6 +1901,7 @@ const DEVICE_BUILTIN = {
   //  场景二：用户主页 IP
   // ============================================================
   function injectProfileIp() {
+    if (!enabled) return;
     const info = document.querySelector(CONFIG.SELECTORS.profileInfo);
     if (!info || info.querySelector('.acr-ip')) return;
     const uid = info.getAttribute('data-uid');
@@ -1966,6 +1981,16 @@ const DEVICE_BUILTIN = {
   // ============================================================
   const ACR_Z_INDEX = 2147483000;
 
+  // IP 标签的悬浮变色规则与设置面板无关，脚本启动时就注入，
+  // 否则首次悬浮不变色，要点开一次面板后规则才存在
+  function ensureIpStyle() {
+    if (document.getElementById('acr-ip-style')) return;
+    const style = document.createElement('style');
+    style.id = 'acr-ip-style';
+    style.textContent = `.acr-ip:hover{color:#fd4c5d !important}`;
+    document.head.appendChild(style);
+  }
+
   function ensurePanelStyle() {
     if (document.getElementById('acr-panel-style')) return;
     const style = document.createElement('style');
@@ -2001,7 +2026,6 @@ const DEVICE_BUILTIN = {
       .acr-actions button.acr-danger{background:#fff;border-color:#f5222d;color:#f5222d}
       .acr-actions button.acr-danger:hover{background:#fff1f0}
       .acr-panel-foot{padding:10px 14px;font-size:11px;color:#999;background:#fafafa;border-top:1px solid #f0f0f0}
-      .acr-ip:hover{color:#fd4c5d !important}
       .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
       .acr-toast.out{opacity:0;transition:opacity .3s}
       @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
@@ -2033,6 +2057,7 @@ const DEVICE_BUILTIN = {
   }
 
   function openPanel(uid) {
+    currentPanelUid = uid || null;
     ensurePanelStyle();
     closePanel();
 
@@ -2134,10 +2159,12 @@ const DEVICE_BUILTIN = {
     panel.append(head, body, foot);
     mask.appendChild(panel);
     document.body.appendChild(mask);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closePanel();
-    }, { once: true });
   }
+
+  // Escape 关闭面板：常驻监听，面板不存在时不操作
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.querySelector('.acr-mask')) closePanel();
+  });
 
   // 点击任意 IP 标签打开面板；捕获阶段拦截，避免触发 A 站自身的评论点击逻辑
   document.addEventListener('click', (e) => {
@@ -2150,6 +2177,8 @@ const DEVICE_BUILTIN = {
   // ============================================================
   //  缓存操作（面板与菜单共用）—— 静默操作，无 alert/confirm/prompt/reload
   // ============================================================
+  let currentPanelUid = null;
+
   function persist() {
     save();
     saveUids();
@@ -2158,7 +2187,8 @@ const DEVICE_BUILTIN = {
   function setEnabled(next) {
     enabled = next;
     writeStorage(CONFIG.CACHE.enabledKey, enabled);
-    if (!enabled) clearAllCache();
+    if (!next) clearAllCache();
+    else resetObservedComments();
     persist();
     showToast(enabled ? '缓存已开启' : '缓存已关闭，已清空全部缓存');
   }
@@ -2213,7 +2243,7 @@ const DEVICE_BUILTIN = {
         <button class="acr-import-cancel" style="border:1px solid #999;background:#f4f4f4;color:#666;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">取消</button>
         <button class="acr-import-confirm" style="border:none;background:#fd4c5d;color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
       </div>`;
-    body.querySelector('.acr-import-cancel').addEventListener('click', () => openPanel());
+    body.querySelector('.acr-import-cancel').addEventListener('click', () => openPanel(currentPanelUid));
     body.querySelector('.acr-import-confirm').addEventListener('click', () => {
       const input = body.querySelector('.acr-import-input').value.trim();
       if (!input) { showToast('请输入 JSON'); return; }
@@ -2258,16 +2288,7 @@ const DEVICE_BUILTIN = {
       container.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483647;display:flex;flex-direction:column;gap:6px;pointer-events:none';
       document.body.appendChild(container);
     }
-    if (!document.getElementById('acr-toast-style')) {
-      const style = document.createElement('style');
-      style.id = 'acr-toast-style';
-      style.textContent = `
-        .acr-toast{background:rgba(0,0,0,.75);color:#fff;font:13px/1.4 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;padding:8px 20px;border-radius:4px;box-shadow:0 2px 12px rgba(0,0,0,.2);animation:acr-toast-in .2s ease-out;white-space:nowrap}
-        .acr-toast.out{opacity:0;transition:opacity .3s}
-        @keyframes acr-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-      `;
-      document.head.appendChild(style);
-    }
+    ensurePanelStyle();
     const toast = document.createElement('div');
     toast.className = 'acr-toast';
     toast.textContent = message;
@@ -2296,6 +2317,7 @@ const DEVICE_BUILTIN = {
 
   pruneExpiredPages();
   save();
+  ensureIpStyle();
   loadPage();
   loadDeviceDB();
   processDeviceModels();
@@ -2306,6 +2328,7 @@ const DEVICE_BUILTIN = {
   registerMenus();
   setTimeout(onDomChange, CONFIG.OBSERVER.urlChangeDelayMs);
   setTimeout(checkUrl, 100);
+  window.addEventListener('pagehide', () => { savePage(); saveUids(); });
 
   // 暴露纯函数与内部状态，供控制台调试和单元测试使用
   window.ACFunReveal = {
