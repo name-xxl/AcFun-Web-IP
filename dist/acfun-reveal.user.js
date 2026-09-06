@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AcFunReveal - A站网页版显示 IP 属地
 // @namespace    http://acfun-reveal.local
-// @version      5.8.1
+// @version      5.8.2
 // @description  显示评论 IP 属地（可视区域优先），并将设备型号代号替换为友好名称
 // @author       name_xxl
 // @match        https://www.acfun.cn/*
@@ -20,7 +20,7 @@
   //  常量与配置：API 端点、DOM 选择器、各类阈值统一收拢于此
   //  A 站改版时只需调整本区块
   // ============================================================
-  const VERSION = '5.8.1';
+  const VERSION = '5.8.2';
 
   const CONFIG = {
     API: {
@@ -1894,12 +1894,15 @@ const DEVICE_BUILTIN = {
       if (!ip || info.querySelector('.acr-ip')) return;
       const top = info.querySelector(CONFIG.SELECTORS.profileTop);
       if (!top) return;
-      top.appendChild(makeIpSpan(ip, {
+      const span = makeIpSpan(ip, {
         text: `IP属地：${ip}`,
-        style: 'font-size:12px;color:#999;',
+        style: 'font-size:12px;color:#999;margin-left:16px;',
         queriedAt: uids[uid]?.t,
         uid,
-      }));
+      });
+      // 复用站内 .common-info 的 relative top 偏移，与私信/举报/分享保持同一水平线
+      span.classList.add('common-info');
+      top.appendChild(span);
       addLog('success', `[主页] ${uid} → ${ip}`);
     });
   }

@@ -112,12 +112,15 @@
       if (!ip || info.querySelector('.acr-ip')) return;
       const top = info.querySelector(CONFIG.SELECTORS.profileTop);
       if (!top) return;
-      top.appendChild(makeIpSpan(ip, {
+      const span = makeIpSpan(ip, {
         text: `IP属地：${ip}`,
-        style: 'font-size:12px;color:#999;',
+        style: 'font-size:12px;color:#999;margin-left:16px;',
         queriedAt: uids[uid]?.t,
         uid,
-      }));
+      });
+      // 复用站内 .common-info 的 relative top 偏移，与私信/举报/分享保持同一水平线
+      span.classList.add('common-info');
+      top.appendChild(span);
       addLog('success', `[主页] ${uid} → ${ip}`);
     });
   }
