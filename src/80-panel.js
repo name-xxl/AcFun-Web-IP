@@ -1,6 +1,6 @@
   // ============================================================
   //  设置面板：点击任意 IP 标签弹出
-  //  样式仿 A 站原生弹窗（浅色主题，主色 #fd4c5d，规范与 danmaku-sender 一致）
+  //  样式仿 A 站原生弹窗（浅色主题，主色 var(--acr-primary)，规范与 danmaku-sender 一致）
   // ============================================================
   const ACR_Z_INDEX = 2147483000;
 
@@ -10,7 +10,9 @@
     if (document.getElementById('acr-ip-style')) return;
     const style = document.createElement('style');
     style.id = 'acr-ip-style';
-    style.textContent = `.acr-ip:hover{color:#fd4c5d !important}`;
+    style.textContent = `:root{--acr-primary:#fd4c5d}`
+      + `.acr-ip:hover{color:var(--acr-primary) !important}`
+      + `.from-phone .deviceModel:hover{color:var(--acr-primary) !important}`;
     document.head.appendChild(style);
   }
 
@@ -19,7 +21,7 @@
     const style = document.createElement('style');
     style.id = 'acr-panel-style';
     style.textContent = `
-      /* —— 仿 A 站原生弹窗：浅色主题，主色 #fd4c5d —— */
+      /* —— 仿 A 站原生弹窗：浅色主题，主色 var(--acr-primary) —— */
       .acr-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:${ACR_Z_INDEX};display:flex;align-items:center;justify-content:center}
       .acr-panel{width:340px;max-width:92vw;background:#fff;border-radius:6px;color:#666;
         font:12px/1.6 PingFangSC,-apple-system,Microsoft Yahei,sans-serif;
@@ -27,22 +29,22 @@
       .acr-panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 4px}
       .acr-panel-title{font-size:14px;font-weight:600;color:#333}
       .acr-panel-close{cursor:pointer;font-size:20px;line-height:1;color:#999;transition:color .2s}
-      .acr-panel-close:hover{color:#fd4c5d}
+      .acr-panel-close:hover{color:var(--acr-primary)}
       .acr-panel-body{padding:4px 14px 8px}
       .acr-user-card{margin:8px 0 4px;padding:8px 12px;background:#fafafa;border:1px solid #e5e5e5;border-radius:4px;font-size:12px;color:#666}
       .acr-user-card div{display:flex;justify-content:space-between;padding:1px 0}
-      .acr-user-card .acr-user-ip{color:#fd4c5d;font-weight:600;font-size:13px}
+      .acr-user-card .acr-user-ip{color:var(--acr-primary);font-weight:600;font-size:13px}
       .acr-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0}
       .acr-row:last-child{border-bottom:none}
       .acr-switch{position:relative;width:40px;height:22px;border-radius:11px;background:#ddd;cursor:pointer;transition:background .2s;flex:none}
       .acr-switch::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s}
-      .acr-switch.on{background:#fd4c5d}
+      .acr-switch.on{background:var(--acr-primary)}
       .acr-switch.on::after{left:20px}
       .acr-days{display:flex;border:1px solid #e5e5e5;border-radius:3px;overflow:hidden}
       .acr-days button{border:none;background:#fff;color:#666;font-size:12px;padding:3px 10px;cursor:pointer;border-right:1px solid #e5e5e5;transition:.15s}
       .acr-days button:last-child{border-right:none}
       .acr-days button:hover{background:#f5f5f5}
-      .acr-days button.acr-active{background:#fd4c5d;border-color:#fd4c5d;color:#fff}
+      .acr-days button.acr-active{background:var(--acr-primary);border-color:var(--acr-primary);color:#fff}
       .acr-actions{display:flex;gap:6px}
       .acr-actions button{border:1px solid #999;background:#f4f4f4;color:#666;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer;transition:.15s;line-height:16px}
       .acr-actions button:hover{background:#e5e5e5}

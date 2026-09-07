@@ -37,11 +37,11 @@
     return floorMatch ? parseInt(floorMatch[1]) : null;
   }
 
-  function makeIpSpan(ip, { text, style, queriedAt, uid } = {}) {
+  function makeIpSpan(ip, { text, style, queriedAt, uid, floorMode } = {}) {
     const span = document.createElement('span');
     span.className = 'acr-ip';
     span.textContent = text ?? ` ${ip}`;
-    span.style.cssText = 'margin-left:3px;cursor:pointer;transition:color .2s;';
+    span.style.cssText = `margin-left:${floorMode ? 8 : 3}px;cursor:pointer;transition:color .2s;`;
     if (style) span.style.cssText += style;
     span.title = `IP属地：${ip}\n（基于用户主页实时资料，不代表发布时的IP）`;
     if (queriedAt) span.title += `\n查询于：${new Date(queriedAt).toLocaleString()}`;
@@ -67,7 +67,7 @@
       addLog('warn', `⚠️ 注入点缺失: commentId=${commentId}`);
       return;
     }
-    anchor.appendChild(makeIpSpan(ip, { queriedAt, uid }));
+    anchor.appendChild(makeIpSpan(ip, { queriedAt, uid, floorMode: mode === '盖楼' }));
     addLog('debug', `🎉 ${ip} (${mode}模式)`);
   }
 

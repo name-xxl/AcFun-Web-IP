@@ -274,7 +274,7 @@
       </div>
       <div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
         <button class="acr-device-cancel" style="border:1px solid #999;background:#f4f4f4;color:#666;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">取消</button>
-        <button class="acr-device-confirm" style="border:none;background:#fd4c5d;color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
+        <button class="acr-device-confirm" style="border:none;background:var(--acr-primary);color:#fff;font-size:12px;padding:3px 12px;border-radius:3px;cursor:pointer">导入</button>
       </div>`;
 
     body.querySelector('.acr-device-cancel').addEventListener('click', () => openPanel(currentPanelUid));
